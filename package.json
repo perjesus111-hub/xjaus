@@ -1,0 +1,164 @@
+{
+  "name": "xjaus",
+  "homepage": "https://github.com/xjaus/xjaus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xjaus/xjaus.git"
+  },
+  "main": "electron/main.cjs",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && npm run copy-login",
+    "copy-login": "mkdir -p dist && cp public/login.html dist/login.html",
+    "test": "vitest run && node --test electron/verify-security.cjs electron/verify-icons.cjs electron/verify-windows.cjs",
+    "electron": "electron . --class=io.github.xjaus.xjaus",
+    "electron:build-backend": "cargo build --manifest-path src-tauri/Cargo.toml --bin xjaus_backend",
+    "electron:run": "npm run build && npm run electron:build-backend && electron . --class=io.github.xjaus.xjaus",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "build:win": "electron-builder --win nsis --x64",
+    "prebuild:win": "npm run build && npm run electron:build-backend:win",
+    "electron:build-backend:win": "node scripts/build-windows.cjs",
+    "electron:build-backend:linux": "node scripts/build-linux.cjs",
+    "dist:linux": "npm run build && npm run electron:build-backend:linux && electron-builder --linux AppImage rpm deb --x64 --publish never -c.directories.output=release/linux && node scripts/linux-verify.cjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3",
+    "happy-dom": "^21.0.3",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.0.18"
+  },
+  "build": {
+    "appId": "io.github.xjaus.xjaus",
+    "productName": "XJAUS",
+    "asar": true,
+    "directories": {
+      "output": "release/win",
+      "buildResources": "resources"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/*.cjs",
+      "!electron/verify-*.cjs",
+      "resources/icons/*.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icons/xjaus.ico",
+      "executableName": "XJAUS",
+      "extraResources": [
+        {
+          "from": "build/windows/bin",
+          "to": "bin",
+          "filter": [
+            "xjaus_backend.exe",
+            "*.dll"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "artifactName": "XJAUS-${version}-win-x64-setup.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "icon": "resources/icons",
+      "maintainer": "XJAUS contributors",
+      "vendor": "XJAUS contributors",
+      "synopsis": "High-performance Xbox Cloud Gaming & Remote Play client for Linux",
+      "artifactName": "XJAUS-${version}-linux-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "src-tauri/target/release/xjaus_backend",
+          "to": "bin/xjaus_backend"
+        }
+      ],
+      "syncDesktopName": true,
+      "executableArgs": ["--class=io.github.xjaus.xjaus"],
+      "desktop": {
+        "entry": {
+          "Name": "XJAUS",
+          "Comment": "High-performance Xbox Cloud Gaming & Remote Play client for Linux",
+          "StartupWMClass": "io.github.xjaus.xjaus"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libxss1",
+        "libgbm1",
+        "libasound2"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXtst",
+        "xdg-utils",
+        "at-spi2-core",
+        "libuuid",
+        "libsecret",
+        "libXScrnSaver",
+        "mesa-libgbm",
+        "alsa-lib"
+      ]
+    }
+  },
+  "description": "High-performance Xbox Cloud Gaming & Remote Play client for Linux",
+  "license": "GPL-3.0-only",
+  "author": {
+    "name": "XJAUS contributors"
+  },
+  "desktopName": "io.github.xjaus.xjaus.desktop"
+}

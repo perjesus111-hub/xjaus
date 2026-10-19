@@ -1,0 +1,13 @@
+{
+  "sourcePage": "https://www.xbox.com/en-US/consoles/compare",
+  "sourceData": "https://www.xbox.com/en-US/consoles/compare/JS/compareContent.js",
+  "sourceUrl": "https://assets.xboxservices.com/assets/67/79/6779a23a-d476-443f-8d72-b0a21fdd2ac6.svg?n=XBX-CMP-A-Icon_Console-D.svg",
+  "kind": "official-vector-icon",
+  "controller": false,
+  "view": "front",
+  "transformation": "Original official Xbox vector icon rasterized at 512px, RGB inverted to pearl for dark UI; no chassis reconstruction or photo cropping. Derived PNG is not an unmodified official photo.",
+  "originalSha256": "6212412b5ceb4b6e031d52ef7954ed1df4b2cbd4bdf5358288ea0bc323f32bd2",
+  "derivedSha256": "12aab075e014065681af06b3df66bc9b67cd5a0841d1d03c6be018b0f096361f",
+  "rights": "Xbox/Microsoft artwork; no claim of open-source licensing.",
+  "limitations": "Front-only official vector icon, not a photographic render. Official photo candidates inspected all had controller overlap; not reused."
+}

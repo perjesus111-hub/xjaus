@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar sesión con Xbox</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #0b0d12; color: #e8eaed; }
+    .card { background: #141721; border: 1px solid #2a2f3c; border-radius: 16px; padding: 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.5); max-width: 420px; width: 90vw; }
+    h1 { margin: 0 0 16px; font-size: 1.5rem; letter-spacing: -.04em; }
+    h1 span { color: #9ba8ff; }
+    p { margin: 0 0 24px; color: #9ba3b1; font-size: 1rem; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #2a2f3c; border-top: 3px solid #7784ba; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <h1>XJAUS</h1>
+    <p>Redirigiendo a Microsoft… por favor espera.</p>
+  </div>
+  <script>
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const url = params.get('url');
+      if (url) {
+        window.location.href = url;
+      } else {
+        document.body.innerHTML = '<div class="card"><h1>Error</h1><p>No se recibió la URL de inicio de sesión.</p></div>';
+      }
+    })();
+  </script>
+</body>
+</html>

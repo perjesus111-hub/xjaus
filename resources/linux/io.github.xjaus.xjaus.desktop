@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=XJAUS
+Comment=High-performance Xbox Cloud Gaming & Remote Play client for Linux
+Exec=xjaus --class=io.github.xjaus.xjaus %U
+Icon=xjaus
+Terminal=false
+Categories=Game;
+StartupWMClass=io.github.xjaus.xjaus

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=XJAUS
+Comment=High-performance Xbox Cloud Gaming & Remote Play client for Linux
+Exec="/home/Greg/Proyectos/greenlight-next/launch-xjaus.sh" --class=io.github.xjaus.xjaus %U
+Icon=/home/Greg/Proyectos/greenlight-next/assets/icon.png
+Terminal=false
+Categories=Game;
+StartupWMClass=io.github.xjaus.xjaus

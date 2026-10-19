@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://store-images.s-microsoft.com https://images-eds.xboxlive.com https://images-eds-ssl.xboxlive.com data:; connect-src 'none'; media-src 'self' blob: mediastream:; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="/src/styles.css">
+  <title>XJAUS</title>
+  <script type="module" src="/src/main.ts" defer></script>
+</head>
+<body>
+  <section id="login-screen" class="screen login-screen">
+    <main class="login-card">
+      <div class="login-brand">
+        <span class="eyebrow">REMOTE PLAY · XCLOUD</span>
+        <h1><span>XJAUS</span></h1>
+        <p class="muted" data-i18n="tagline">Tu consola y la nube de Xbox.</p>
+      </div>
+      <button id="btn-login" class="btn-primary btn-full" type="button" data-i18n="signInXbox">Iniciar sesión con Xbox</button>
+      <div id="login-feedback" class="login-feedback" aria-live="polite" hidden></div>
+      <button id="manual-login" class="manual-link" type="button" data-i18n="loadSession">Cargar sesión guardada</button>
+      <span id="login-status" class="status small" data-state="off" data-i18n="noSession">Sin sesión</span>
+    </main>
+  </section>
+  <section id="dashboard" class="screen dashboard" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="eyebrow">XJAUS</span><span id="auth-status" class="status" data-state="off" data-i18n="noSession">Sin sesión</span></div>
+      <div class="tab-navigation">
+        <kbd class="shoulder-hint" aria-hidden="true" hidden>LB</kbd>
+        <nav class="tabs" aria-label="Secciones" data-i18n-aria="sections">
+          <button class="tab active" type="button" data-action="consoles" data-i18n="myConsolesTab">Mis Consolas</button>
+          <button class="tab" type="button" data-action="cloud">Cloud Gaming</button>
+          <button class="tab" type="button" data-action="settings" data-i18n="settings">Configuración</button>
+        </nav>
+        <kbd class="shoulder-hint" aria-hidden="true" hidden>RB</kbd>
+      </div>
+      <span id="profile-chip" class="profile-chip" hidden aria-label="Perfil Xbox" data-i18n-aria="profileLabel"></span>
+    </header>
+    <section class="panel" id="panel-consoles"><div class="panel-head"><h2 data-i18n="myConsoles">Mis consolas</h2><button id="refresh-consoles" hidden type="button" aria-keyshortcuts="X" data-i18n="refreshConsoles">Refrescar · X</button></div><div id="consoles-container" class="card-grid"><p class="muted" data-i18n="findingConsoles">Buscando consolas…</p></div></section>
+    <section class="panel" id="panel-cloud" hidden><div class="panel-head"><h2>Cloud Gaming</h2></div><div class="cloud-search-tools"><input id="cloud-search" type="search" placeholder="Buscar juego" aria-label="Buscar juego" data-i18n-aria="searchGame" data-i18n-placeholder="searchGame"><span class="search-shortcuts"><span><kbd class="pad-x">X</kbd> <span data-i18n="search">Buscar</span></span></span></div><section id="cloud-recent" class="cloud-recent" aria-labelledby="cloud-recent-heading" hidden><h3 id="cloud-recent-heading" data-i18n="continuePlaying">Continuar jugando</h3><div id="cloud-recent-grid" class="recent-grid"></div></section><div id="cloud-filters" class="cloud-filters" role="group" aria-label="Filtrar juegos" data-i18n-aria="filterGames"></div><div id="cloud-container" class="card-grid"><p class="muted" data-i18n="openCloudTab">Abre esta pestaña para cargar los juegos.</p></div></section>
+    <section class="panel" id="panel-settings" hidden>
+      <div class="panel-head"><h2 data-i18n="settings">Configuración</h2></div>
+      <div class="settings-grid"><label class="setting" data-i18n="language">Idioma<select id="app-language"><option value="auto" data-i18n="autoLanguage">Automático (sistema)</option><option value="es" lang="es">Español</option><option value="en" lang="en">English</option></select></label>
+        <label class="setting" data-i18n="resolution">Resolución<select id="stream-resolution"><option value="1280x720">720p</option><option value="1920x1080" selected>1080p</option><option value="2560x1440">1440p (QHD)</option></select></label>
+        <label class="setting" data-i18n="bitrate">Bitrate máximo (Mbps)<input id="stream-bitrate" type="range" min="15000" max="45000" step="1000" value="30000"><output id="stream-bitrate-value">30 Mbps</output></label>
+        <label class="setting" data-i18n="codec">Códec preferido<select id="stream-codec"><option value="hevc" data-i18n="hevc">HEVC (si está disponible)</option><option value="h264" data-i18n="h264">H.264 High (si está disponible)</option><option value="auto" selected data-i18n="automatic">Automático</option></select></label>
+        <label class="setting" data-i18n="audio">Audio<select id="stream-audio"><option value="opus" selected data-i18n="stereo">Opus estéreo</option><option value="default" data-i18n="default">Predeterminado</option></select></label>
+        <label class="setting" data-i18n="audioGain">Ganancia de audio<input id="stream-audioGain" type="range" min="1" max="1.5" step="0.05" value="1"><output id="stream-gain-value">1×</output></label>
+      </div>
+      <details class="diagnostics"><summary data-i18n="technicalDiagnostics">Diagnóstico técnico</summary><pre id="output" aria-live="polite" data-i18n="ready">Listo.</pre></details>
+      <section class="support-card" aria-labelledby="support-us">
+        <button id="support-us" type="button" aria-describedby="support-desc" data-i18n="support_us">Apóyanos</button>
+        <p id="support-desc" class="muted" data-i18n="support_desc">Apoya el desarrollo continuo de XJAUS</p>
+      </section>
+    </section>
+  </section>
+  <section id="player-screen" class="player-screen" hidden>
+    <video id="stream-video" autoplay="" playsinline="" aria-label="Video de Xbox" data-i18n-aria="xboxVideo"></video>
+    <div id="stream-overlay" class="stream-overlay" role="status" aria-live="polite"><div class="loading-ring"></div><p id="stream-message" data-i18n="connecting">Conectando…</p></div>
+    <div class="player-toolbar"><span class="player-brand">XJAUS</span><button id="stream-menu-button" type="button" data-i18n="streamMenu">Menú de transmisión</button><button id="stop-stream" type="button" class="btn-danger" data-i18n="exitGame">Salir del juego</button></div>
+  </section>
+  <div id="toast" role="alert" aria-live="assertive" hidden></div>
+  <div id="xjaus-cursor" aria-hidden="true"></div>
+
+
+</body></html>

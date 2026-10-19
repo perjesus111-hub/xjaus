@@ -1,0 +1,38 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '..');
+const pkg = require('../package.json');
+const { backendPath } = require('../electron/backend-path.cjs');
+const output = path.join(root, 'release/linux');
+const resources = path.join(output, 'linux-unpacked/resources');
+const binary = backendPath({ isPackaged: true, resourcesPath: resources, platform: 'linux' });
+assert.equal(fs.statSync(binary).mode & 0o777, 0o755);
+const source = fs.readFileSync(path.join(root, 'src-tauri/target/release/xjaus_backend'));
+assert.deepEqual(fs.readFileSync(binary), source);
+const asar = require('@electron/asar');
+const archive = path.join(resources, 'app.asar');
+const metadata = JSON.parse(asar.extractFile(archive, 'package.json').toString());
+assert.equal(metadata.version, '1.0.0');
+assert.equal(metadata.license, 'GPL-3.0-only');
+// electron-builder removes build-only configuration from packaged metadata.
+assert.equal(pkg.build.appId, 'io.github.xjaus.xjaus');
+assert.ok(asar.extractFile(archive, 'electron/main.cjs').toString().includes("app.setAppUserModelId('io.github.xjaus.xjaus')"));
+assert.equal(metadata.description, 'High-performance Xbox Cloud Gaming & Remote Play client for Linux');
+assert.equal(metadata.desktopName, 'io.github.xjaus.xjaus.desktop');
+assert.equal(metadata.homepage, 'https://github.com/xjaus/xjaus');
+assert.equal(metadata.repository.url, 'https://github.com/xjaus/xjaus.git');
+for (const entry of ['dist/index.html', 'dist/login.html', 'electron/main.cjs', 'electron/preload.cjs', 'electron/backend-path.cjs']) assert.ok(asar.extractFile(archive, entry).length, entry);
+const artifacts = ['AppImage', 'rpm', 'deb'].map(ext => {
+  const arch = ext === 'deb' ? 'amd64' : 'x86_64';
+  const name = `XJAUS-${pkg.version}-linux-${arch}.${ext}`;
+  const file = path.join(output, name);
+  assert.ok(fs.statSync(file).size > 1024, name);
+  const sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  return { file, sha256 };
+});
+fs.writeFileSync(path.join(output, 'SHA256SUMS'), artifacts.map(({file, sha256}) => `${sha256}  ${path.basename(file)}`).join('\n') + '\n');
+console.log('Packaged backend path, byte identity, mode 0755, ASAR metadata and renderer verified');
+for (const {file, sha256} of artifacts) console.log(`${sha256}  ${file}`);

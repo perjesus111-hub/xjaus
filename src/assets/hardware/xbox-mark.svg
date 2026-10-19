@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-102 -102 204 204">
+  <!-- Official Xbox nexus geometry: solid sphere with four concave circular
+       cutouts on the cardinal axes (bite radius 57.93 at distance 100 from a
+       radius-100 sphere, the 18.128/31.2845 ratio of the official mark),
+       leaving the stylized X. Mask construction guarantees true circular arcs. -->
+  <defs>
+    <mask id="xbox-nexus">
+      <rect x="-102" y="-102" width="204" height="204" fill="black"/>
+      <circle cx="0" cy="0" r="100" fill="white"/>
+      <circle cx="0" cy="-100" r="57.93" fill="black"/>
+      <circle cx="100" cy="0" r="57.93" fill="black"/>
+      <circle cx="0" cy="100" r="57.93" fill="black"/>
+      <circle cx="-100" cy="0" r="57.93" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="-102" y="-102" width="204" height="204" fill="#ffffff" mask="url(#xbox-nexus)"/>
+</svg>

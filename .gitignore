@@ -1,0 +1,51 @@
+# Dependencies and generated application bundles
+node_modules/
+dist/
+dist-ssr/
+.vite/
+build/
+release/
+artifacts/
+backend-windows/
+target/
+
+# Local environments, credentials, sessions and caches
+.env*
+.venv/
+venv/
+__pycache__/
+*.pyc
+.cache/
+*.local
+logs/
+*.log
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.pem
+*.key
+*.p12
+*.pfx
+*token*.json
+*session*.json
+*.local.json
+tokens/
+cache/
+.storage/
+userData/
+auth.json
+token_cache.bin
+
+# Keep Cargo.lock: XJAUS ships an application, not just a library.
+
+# Editor and operating-system files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

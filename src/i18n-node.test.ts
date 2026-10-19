@@ -1,0 +1,2 @@
+import {it,expect} from 'vitest';
+it('does not read the Node experimental localStorage getter outside a renderer',async()=>{const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');let reads=0;Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){reads++;return undefined;}});try{await import('./i18n');expect(reads).toBe(0);}finally{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete (globalThis as Record<string,unknown>).localStorage;}});
