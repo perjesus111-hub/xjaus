@@ -1,9 +1,9 @@
 {
   "name": "xjaus",
-  "homepage": "https://github.com/xjaus/xjaus",
+  "homepage": "https://github.com/perjesus111-hub/xjaus",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xjaus/xjaus.git"
+    "url": "https://github.com/perjesus111-hub/xjaus.git"
   },
   "main": "electron/main.cjs",
   "private": true,

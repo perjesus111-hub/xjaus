@@ -22,8 +22,8 @@ assert.equal(pkg.build.appId, 'io.github.xjaus.xjaus');
 assert.ok(asar.extractFile(archive, 'electron/main.cjs').toString().includes("app.setAppUserModelId('io.github.xjaus.xjaus')"));
 assert.equal(metadata.description, 'High-performance Xbox Cloud Gaming & Remote Play client for Linux');
 assert.equal(metadata.desktopName, 'io.github.xjaus.xjaus.desktop');
-assert.equal(metadata.homepage, 'https://github.com/xjaus/xjaus');
-assert.equal(metadata.repository.url, 'https://github.com/xjaus/xjaus.git');
+assert.equal(metadata.homepage, 'https://github.com/perjesus111-hub/xjaus');
+assert.equal(metadata.repository.url, 'https://github.com/perjesus111-hub/xjaus.git');
 for (const entry of ['dist/index.html', 'dist/login.html', 'electron/main.cjs', 'electron/preload.cjs', 'electron/backend-path.cjs']) assert.ok(asar.extractFile(archive, entry).length, entry);
 const artifacts = ['AppImage', 'rpm', 'deb'].map(ext => {
   const arch = ext === 'deb' ? 'amd64' : 'x86_64';
