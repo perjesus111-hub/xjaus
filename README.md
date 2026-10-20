@@ -31,9 +31,9 @@ Captured from the packaged Electron AppImage on Linux. Account details are redac
 
 The Remote Play screenshot shows real received video with the HUD hidden and telemetry enabled, but the console displays a controller/profile pairing prompt. It is not a gameplay-control verification. This local run received 2560×1440 video with increasing decoded frames; it does not establish hardware decoder use or guarantee the same performance elsewhere.
 
-## Linux packages
+## Packages
 
-Release packaging targets **AppImage, RPM and DEB for x86-64**. Download packages only from this repository's published GitHub Releases once available. Do not use older Tauri bundles as substitutes for the Electron release.
+Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS installer for Windows x64**. Download packages only from this repository's published GitHub Releases once available. Do not use older Tauri bundles as substitutes for the Electron release.
 
 ### AppImage
 
@@ -55,6 +55,14 @@ sudo dnf install ./XJAUS-*.rpm
 ```sh
 sudo apt install ./XJAUS-*.deb
 ```
+
+### Windows (x64)
+
+```powershell
+XJAUS-*-win-x64-setup.exe
+```
+
+The Windows installer is per-user by default and lets you choose the installation directory. It bundles the same Rust sidecar as the Linux build, so no separate backend download is required. The NSIS bootstrap is 32-bit while the installed application, Electron runtime and sidecar are x64.
 
 Launch XJAUS from your application menu after installation. Packaging support is not certification that every Linux distribution or SteamOS version has been tested.
 
