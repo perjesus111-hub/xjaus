@@ -27,7 +27,8 @@
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navegación principal" data-i18n-aria="sections">
         <div class="sidebar-brand" aria-label="XJAUS"><span aria-hidden="true">X</span>JAUS</div>
-        <nav class="sidebar-nav" aria-label="Secciones" data-i18n-aria="sections">
+        <nav class="tabs sidebar-nav" aria-label="Secciones" data-i18n-aria="sections">
+          <button class="tab" type="button" data-action="home">Inicio</button>
           <button class="tab active" type="button" data-action="consoles" data-i18n="myConsolesTab">Mis Consolas</button>
           <button class="tab" type="button" data-action="cloud">Cloud Gaming</button>
           <button class="tab" type="button" data-action="settings" data-i18n="settings">Configuración</button>
@@ -43,7 +44,17 @@
           </div>
           <span id="profile-chip" class="profile-chip" hidden aria-label="Perfil Xbox" data-i18n-aria="profileLabel"></span>
         </header>
-        <section class="panel" id="panel-consoles"><div class="panel-head"><h2 data-i18n="myConsoles">Mis consolas</h2><button id="refresh-consoles" hidden type="button" aria-keyshortcuts="X" data-i18n="refreshConsoles">Refrescar · X</button></div><div id="consoles-container" class="card-grid"><p class="muted" data-i18n="findingConsoles">Buscando consolas…</p></div></section>
+        <section class="panel dashboard-home" id="panel-home">
+          <div class="dashboard-hero">
+            <div class="dashboard-hero-copy"><p class="eyebrow">XJAUS</p><h1>Juega tus juegos de Xbox<br>en Linux</h1><p>Cloud Gaming y Remote Play en una sola aplicación.</p></div>
+          </div>
+          <div class="dashboard-actions">
+            <button class="dashboard-action-card" type="button" data-home-action="cloud"><strong>Xbox Cloud Gaming</strong><span>Juega cientos de juegos desde la nube.</span><b aria-hidden="true">›</b></button>
+            <button class="dashboard-action-card" type="button" data-home-action="consoles"><strong>Xbox Remote Play</strong><span>Transmite desde tu consola Xbox.</span><b aria-hidden="true">›</b></button>
+          </div>
+          <section class="dashboard-recent" aria-labelledby="dashboard-recent-title"><h2 id="dashboard-recent-title">Juegos recientes</h2><p class="muted">Tu actividad aparecerá aquí después de iniciar un juego.</p></section>
+        </section>
+        <section class="panel" id="panel-consoles" hidden><div class="panel-head"><h2 data-i18n="myConsoles">Mis consolas</h2><button id="refresh-consoles" hidden type="button" aria-keyshortcuts="X" data-i18n="refreshConsoles">Refrescar · X</button></div><div id="consoles-container" class="card-grid"><p class="muted" data-i18n="findingConsoles">Buscando consolas…</p></div></section>
     <section class="panel" id="panel-cloud" hidden><div class="panel-head"><h2>Cloud Gaming</h2></div><div class="cloud-search-tools"><input id="cloud-search" type="search" placeholder="Buscar juego" aria-label="Buscar juego" data-i18n-aria="searchGame" data-i18n-placeholder="searchGame"><span class="search-shortcuts"><span><kbd class="pad-x">X</kbd> <span data-i18n="search">Buscar</span></span></span></div><section id="cloud-recent" class="cloud-recent" aria-labelledby="cloud-recent-heading" hidden><h3 id="cloud-recent-heading" data-i18n="continuePlaying">Continuar jugando</h3><div id="cloud-recent-grid" class="recent-grid"></div></section><div id="cloud-filters" class="cloud-filters" role="group" aria-label="Filtrar juegos" data-i18n-aria="filterGames"></div><div id="cloud-container" class="card-grid"><p class="muted" data-i18n="openCloudTab">Abre esta pestaña para cargar los juegos.</p></div></section>
     <section class="panel" id="panel-settings" hidden>
       <div class="panel-head"><h2 data-i18n="settings">Configuración</h2></div>

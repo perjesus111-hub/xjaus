@@ -44,7 +44,7 @@ let connectionAttempt: { id: string; abort: AbortController; tab: Tab; origin: H
 let connectionGeneration = 0;
 
 type Status = { authenticated: boolean; account: string; storage: string; catalogAccountScope?: string };
-type Tab = "consoles" | "cloud" | "settings";
+type Tab = "home" | "consoles" | "cloud" | "settings";
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const loginScreen = get<HTMLElement>("login-screen");
 const dashboard = get<HTMLElement>("dashboard");
@@ -218,7 +218,7 @@ function switchTab(tab: Tab, focusView = true): void {
   viewFocus.cancel();
   activeTab = tab;
   catalogNavigation.sync();
-  for (const name of ["consoles", "cloud", "settings"] as const) {
+  for (const name of ["home", "consoles", "cloud", "settings"] as const) {
     get<HTMLElement>(`panel-${name}`).hidden = name !== tab;
     document.querySelector<HTMLButtonElement>(`button[data-action="${name}"]`)?.classList.toggle("active", name === tab);
   }
@@ -226,7 +226,7 @@ function switchTab(tab: Tab, focusView = true): void {
   consolePolling.sync();
   if (tab === "cloud" && !loadingCatalog && cloudTitles.length === 0) void loadCloud();
   syncCatalogPager();
-  if (focusView) viewFocus.begin(get<HTMLElement>(`panel-${tab}`), tab==='cloud'? '#cloud-container .game-card .connect-btn' : tab==='consoles'? '.console-card button' : 'select,input,button');
+  if (focusView) viewFocus.begin(get<HTMLElement>(`panel-${tab}`), tab==='cloud'? '#cloud-container .game-card .connect-btn' : tab==='consoles'? '.console-card button' : tab==='home' ? '.dashboard-action-card' : 'select,input,button');
 }
 
 function cardButton(label: () => string, onClick: () => void, enabled: boolean): HTMLButtonElement {
@@ -666,11 +666,14 @@ get<HTMLButtonElement>("manual-login").addEventListener("click", async () => {
   try { showAuth(await invoke<Status>("load_session")); }
   catch (error) { loginFeedback.hidden = false; clearTextBinding(loginFeedback); loginFeedback.textContent = errorText(error); }
 });
-for (const tab of ["consoles", "cloud", "settings"] as const) {
+for (const tab of ["home", "consoles", "cloud", "settings"] as const) {
   document.querySelector<HTMLButtonElement>(`button[data-action="${tab}"]`)?.addEventListener("click", () => {
     switchTab(tab);
     if (tab === "settings") void refreshProfile();
   });
+}
+for (const button of document.querySelectorAll<HTMLButtonElement>('[data-home-action]')) {
+  button.addEventListener('click', () => switchTab(button.dataset.homeAction as Extract<Tab, 'cloud' | 'consoles'>));
 }
 
 get<HTMLButtonElement>('support-us').addEventListener('click',()=>{
