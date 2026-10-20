@@ -415,6 +415,8 @@ html.cursor-none, html.cursor-none * { cursor: none !important; }
 #cloud-search { width: min(100%, 450px); margin: 0 0 18px; }
 .diagnostics { margin-top: 20px; color: var(--text-dim); }
 .diagnostics summary { cursor: pointer; }
+#copy-diagnostics { margin-top: 12px; padding: 9px 13px; color: var(--gold-bright); background: #191a1c; border: 1px solid var(--gold-muted); border-radius: 8px; font: 600 .82rem system-ui; }
+#copy-diagnostics:hover, #copy-diagnostics:focus-visible { background: #25231d; border-color: var(--gold-bright); }
 .status[data-state="ok"] { color: var(--gold); }
 .brand .eyebrow { font-size: 1.1rem; color: var(--gold); font-weight: 800; }
 

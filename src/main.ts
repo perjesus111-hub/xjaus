@@ -31,6 +31,7 @@ import { extractConsoles, resolveHomeTarget, type ConsoleItem } from "./ui-state
 
 import { bindPlayerFullscreen } from "./fullscreen";
 import { createProfilePanel, type XboxProfile } from "./profile-panel";
+import { sanitizeDiagnostics } from './diagnostics';
 import { mountStreamMenu } from "./stream-menu";
 import { createStreamTelemetry, ConnectionGrace } from "./stream-telemetry";
 import { createPlayerHudController } from "./hud";
@@ -743,6 +744,11 @@ languageControl.value = i18n.preference;
 languageControl.addEventListener('change', () => {
   const value = languageControl.value;
   if (value === 'auto' || value === 'es' || value === 'en') i18n.setPreference(value);
+});
+get<HTMLButtonElement>('copy-diagnostics').addEventListener('click', async () => {
+  const report = sanitizeDiagnostics(get<HTMLElement>('output').textContent ?? '');
+  try { await navigator.clipboard.writeText(report); notice('Informe técnico copiado'); }
+  catch { notice('No se pudo copiar el informe técnico'); }
 });
 get<HTMLButtonElement>("stop-stream").addEventListener("click", () => { void stopGame(); });
 void settingsReady.then(() => invoke<Status>("auth_status")).then(showAuth).catch((error) => notice(() => t('sessionStatus',{error:errorText(error)})));
