@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 20
     # Rust settings tests require an explicit writable temporary directory.
     env:
-      TMPDIR: ${{ runner.temp }}
+      TMPDIR: /tmp
     steps:
       - uses: actions/checkout@v4
       - name: Install native build dependencies
