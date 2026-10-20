@@ -10,7 +10,8 @@ export function resolveLocale(preference:LanguagePreference,languages:readonly s
  return [...languages,language].some(value=>/^es(?:[-_]|$)/i.test(value))?'es':'en';
 }
 export function createI18n(storage?:Pick<Storage,'getItem'|'setItem'>,languages:readonly string[]=[],language='') {
- let preference:LanguagePreference='es';
+ // First launch follows the OS language ('auto'); only an explicit saved preference overrides it.
+ let preference:LanguagePreference='auto';
  try{const saved=storage?.getItem(LANGUAGE_KEY);if(saved==='en'||saved==='es'||saved==='auto')preference=saved;}catch{/* storage may be denied */}
  const listeners=new Set<()=>void>();
  return {

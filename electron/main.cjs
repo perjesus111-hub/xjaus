@@ -9,9 +9,10 @@ app.setName('XJAUS');
 app.setAppUserModelId('io.github.xjaus.xjaus');
 // Isolated namespace: no automatic import or removal of previous app data.
 app.setPath('userData', path.join(app.getPath('appData'), 'io.github.xjaus.xjaus'));
-const systemLang = [process.env.LANG, process.env.LC_ALL, process.env.LC_MESSAGES].filter(Boolean).join(':') || 'es_MX';
-const localeArg = systemLang.toLowerCase().includes('es') ? 'es-MX' : 'en-US';
-app.commandLine.appendSwitch('lang', localeArg);
+// Follow the OS language; only force a locale when the environment explicitly says Spanish.
+// Otherwise let Chromium detect the system language on its own (never default to Spanish).
+const systemLang = [process.env.LANG, process.env.LC_ALL, process.env.LC_MESSAGES].filter(Boolean).join(':');
+if (systemLang && systemLang.toLowerCase().includes('es')) app.commandLine.appendSwitch('lang', 'es-MX');
 if (process.platform === 'linux') {
   app.setDesktopName('io.github.xjaus.xjaus.desktop');
   app.commandLine.appendSwitch('class', 'io.github.xjaus.xjaus');
@@ -97,7 +98,7 @@ ipcMain.handle('xjaus:open-external', async (event, url) => {
   await shell.openExternal(url);
 });
 app.whenReady().then(() => {
-  console.info('[XJAUS locale]', JSON.stringify({locale: app.getLocale?.(), requested: localeArg, LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES}));
+  console.info('[XJAUS locale]', JSON.stringify({locale: app.getLocale?.(), requested: systemLang || 'auto', LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES}));
   startBackend();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   window = new BrowserWindow({

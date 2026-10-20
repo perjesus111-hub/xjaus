@@ -6,6 +6,16 @@ describe('language preference',()=>{
  const localStorage=new MapStorage();
  beforeEach(()=>localStorage.clear());
  it.each(['es','ES','es-MX','Es_419','ES-es'])('detects Spanish OS %s',value=>expect(resolveLocale('auto',[value],'en-US')).toBe('es'));
+ it('follows the OS language on first launch instead of forcing Spanish',()=>{
+  expect(createI18n(new MapStorage(),['en-US'],'en-US').locale).toBe('en');
+  expect(createI18n(new MapStorage(),['es-MX'],'es-MX').locale).toBe('es');
+  expect(createI18n(new MapStorage(),[],'fr-FR').locale).toBe('en');
+  expect(createI18n(new MapStorage(),[]).locale).toBe('en');
+ });
+ it('a saved manual preference still wins over the OS language on later launches',()=>{
+  const saved=new MapStorage();saved.setItem(LANGUAGE_KEY,'es');
+  expect(createI18n(saved,['en-US'],'en-US').locale).toBe('es');
+ });
  it('normalizes script, numeric-region and environment locales to Spanish',()=>{for(const locale of ['es-MX','es-ES','es-419','es_MX.UTF-8','ES'])expect(resolveLocale('auto',[],locale)).toBe('es');});
  it('checks all preferred OS languages and falls back to English',()=>{expect(resolveLocale('auto',['fr','ES-ar'],'en')).toBe('es');expect(resolveLocale('auto',['fr'],'en')).toBe('en');expect(resolveLocale('auto',[],'es-ES')).toBe('es');});
  it('manual preference wins and persists without overwriting streaming settings',()=>{localStorage.setItem('xjaus:settings:v1','original');const store=createI18n(localStorage,['es-MX'],'es');store.setPreference('en');expect(store.locale).toBe('en');expect(localStorage.getItem(LANGUAGE_KEY)).toBe('en');expect(createI18n(localStorage,['es']).locale).toBe('en');expect(localStorage.getItem('xjaus:settings:v1')).toBe('original');store.setPreference('auto');expect(store.locale).toBe('es');});

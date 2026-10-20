@@ -15,7 +15,7 @@ assert.deepEqual(fs.readFileSync(binary), source);
 const asar = require('@electron/asar');
 const archive = path.join(resources, 'app.asar');
 const metadata = JSON.parse(asar.extractFile(archive, 'package.json').toString());
-assert.equal(metadata.version, '1.0.0');
+assert.equal(metadata.version, pkg.version);
 assert.equal(metadata.license, 'GPL-3.0-only');
 // electron-builder removes build-only configuration from packaged metadata.
 assert.equal(pkg.build.appId, 'io.github.xjaus.xjaus');
