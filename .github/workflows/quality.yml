@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+# The repository's UI tests assert the supported Spanish fallback strings.
+# Rust settings tests require an explicit writable temporary directory.
+env:
+  LANG: es_MX.UTF-8
+  LC_ALL: es_MX.UTF-8
+  TMPDIR: ${{ runner.temp }}
+
 concurrency:
   group: quality-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
