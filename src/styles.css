@@ -540,6 +540,10 @@ html.cursor-none, html.cursor-none * { cursor: none !important; }
 @media (max-width: 1100px) { .topbar .tab-navigation { order: 2; margin: 0; width: 100%; justify-content: center; } }
 .shoulder-hint[hidden] { display: none; }
 #stop-stream { background: rgba(20,22,28,.75); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.15); border-radius: 999px; color: #fff; }
+#stream-menu-button { display: inline-flex; align-items: center; gap: 8px; width: auto; padding: 9px 14px; color: var(--text-primary); background: rgba(13,14,16,.86); border: 1px solid rgba(213,172,72,.60); border-radius: 999px; box-shadow: 0 8px 26px rgba(0,0,0,.34); font: 600 .83rem system-ui; }
+#stream-menu-button::before { content: '☰'; color: var(--gold-bright); font-size: 1.05rem; line-height: 1; }
+#stream-menu-button:hover, #stream-menu-button:focus-visible, #stream-menu-button.gamepad-focus:focus { color: var(--gold-bright); border-color: var(--gold-bright); background: rgba(28,27,22,.96); outline: 2px solid var(--gold-bright); outline-offset: 3px; }
+#stream-menu-button:active { transform: translateY(1px); }
 #stop-stream:hover, #stop-stream:focus-visible { background: rgba(20,22,28,.9); border-color: rgba(255,255,255,.4); }
 @media (prefers-reduced-motion: reduce) { .player-toolbar { transition: none; } }
 .shoulder-hint { display: inline-block; padding: 2px 6px; border-radius: 4px; font: 700 11px system-ui; background: rgba(212,175,55,.09); border: 1px solid rgba(212,175,55,.28); color: #ffd866; vertical-align: middle; }
