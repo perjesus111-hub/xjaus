@@ -9,13 +9,6 @@ on:
 permissions:
   contents: read
 
-# The repository's UI tests assert the supported Spanish fallback strings.
-# Rust settings tests require an explicit writable temporary directory.
-env:
-  LANG: es_MX.UTF-8
-  LC_ALL: es_MX.UTF-8
-  TMPDIR: ${{ runner.temp }}
-
 concurrency:
   group: quality-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +18,10 @@ jobs:
     name: Renderer checks (Node 24)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # UI tests assert the supported Spanish fallback strings.
+    env:
+      LANG: es_MX.UTF-8
+      LC_ALL: es_MX.UTF-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,6 +37,9 @@ jobs:
     name: Rust sidecar checks
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Rust settings tests require an explicit writable temporary directory.
+    env:
+      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
       - name: Install native build dependencies
