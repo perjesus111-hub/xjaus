@@ -694,7 +694,7 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .app-main .console-card-body { min-height: 190px; margin: 0; }
 .app-main .console-hardware { max-height: 195px; }
 .app-main #panel-settings { max-width: 1160px; }
-.app-main .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.app-main .settings-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
 .app-main .setting { min-height: 112px; padding: 16px; border-radius: var(--radius-sm); background: #1a1b1e; }
 .app-main .setting select { min-height: 40px; background: #101113; border-color: #34353a; }
 .app-main .diagnostics { border-top: 1px solid var(--border-subtle); padding-top: 18px; }
