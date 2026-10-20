@@ -414,7 +414,7 @@ html.cursor-none, html.cursor-none * { cursor: none !important; }
 #cloud-search, #stream-bitrate { background: var(--bg-input); color: var(--text); border: 1px solid var(--border-gold); border-radius: 8px; padding: 10px; font: inherit; }
 #cloud-search { width: min(100%, 450px); margin: 0 0 18px; }
 .diagnostics { margin-top: 20px; color: var(--text-dim); }
-.diagnostics summary { cursor: pointer; }
+.diagnostics h3 { margin: 0 0 10px; font-size: 1rem; font-weight: 600; color: var(--text); }
 #copy-diagnostics { margin-top: 12px; padding: 9px 13px; color: var(--gold-bright); background: #191a1c; border: 1px solid var(--gold-muted); border-radius: 8px; font: 600 .82rem system-ui; }
 #copy-diagnostics:hover, #copy-diagnostics:focus-visible { background: #25231d; border-color: var(--gold-bright); }
 .status[data-state="ok"] { color: var(--gold); }
@@ -698,10 +698,50 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .app-main .setting { min-height: 112px; padding: 16px; border-radius: var(--radius-sm); background: #1a1b1e; }
 .app-main .setting select { min-height: 40px; background: #101113; border-color: #34353a; }
 .app-main .diagnostics { border-top: 1px solid var(--border-subtle); padding-top: 18px; }
+/* --- Settings subnavigation (mockup: subnav con iconos + panel de sección) --- */
+.settings-layout { display: grid; grid-template-columns: clamp(190px, 17vw, 240px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.settings-subnav { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg, 12px); background: var(--bg-sidebar, #0d0e10); }
+.settings-nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--text-dim); font-size: .92rem; font-weight: 500; line-height: 1.2; text-align: left; cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease; }
+.settings-nav-item::before { width: 1.2em; text-align: center; font-size: 1rem; color: inherit; }
+.settings-nav-item[data-settings-section='general']::before { content: '⚙'; }
+.settings-nav-item[data-settings-section='streaming']::before { content: '≋'; }
+.settings-nav-item[data-settings-section='video']::before { content: '▶'; }
+.settings-nav-item[data-settings-section='interfaz']::before { content: '▦'; }
+.settings-nav-item[data-settings-section='diagnostico']::before { content: '✚'; }
+.settings-nav-item[data-settings-section='acerca']::before { content: 'ⓘ'; }
+.settings-nav-item:hover { color: var(--text-primary); background: rgba(255,255,255,.04); }
+.settings-nav-item.active, .settings-nav-item[aria-selected='true'] { color: var(--gold-bright); border-color: var(--gold-muted); background: linear-gradient(90deg, rgba(213,172,72,.20), rgba(213,172,72,.06)); }
+.settings-sections { min-width: 0; }
+.settings-section { padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg, 12px); background: var(--bg-surface, #151619); }
+.settings-rows { display: flex; flex-direction: column; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 54px; padding: 12px 2px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.setting-row:last-child { border-bottom: none; }
+.setting-row > label, .setting-row > span:first-child { color: var(--text-primary); font-size: .95rem; }
+.setting-row select { min-height: 40px; min-width: 200px; padding: 0 12px; color: var(--text-primary); background: #101113; border: 1px solid #34353a; border-radius: 8px; }
+.range-control { display: flex; flex: 1; align-items: center; gap: 12px; max-width: 340px; }
+.range-control input { flex: 1; }
+.range-control output { font-variant-numeric: tabular-nums; color: var(--gold-bright); }
+.switch { position: relative; flex: none; width: 46px; height: 26px; appearance: none; border: none; border-radius: 999px; background: #34353a; cursor: pointer; transition: background .15s ease; }
+.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #c9c7c0; transition: left .15s ease, background .15s ease; }
+.switch:checked { background: var(--gold); }
+.switch:checked::after { left: 23px; background: #0a0a0a; }
+.settings-profile-slot { margin-bottom: 12px; }
+.settings-profile-slot:empty { display: none; }
+.link-btn { color: var(--gold-bright); background: transparent; border: none; cursor: pointer; font-size: .92rem; text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:hover, .link-btn:focus-visible { color: #fff; }
+#app-version { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.about-license { margin-top: 12px; font-size: .82rem; }
+/* --- Preferencias de interfaz (atributos data en <html>) --- */
+html[data-density='comfortable'] .card-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+html[data-density='compact'] .card-grid { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
+html[data-card-titles='focus'] .game-card h3 { opacity: 0; transform: translateY(2px); transition: opacity .12s ease; }
+html[data-card-titles='focus'] .game-card:hover h3, html[data-card-titles='focus'] .game-card:focus-within h3 { opacity: 1; transform: none; }
+html[data-focus-intensity='subtle'] button:focus-visible, html[data-focus-intensity='subtle'] select:focus-visible, html[data-focus-intensity='subtle'] input:focus-visible, html[data-focus-intensity='subtle'] summary:focus-visible, html[data-focus-intensity='subtle'] .gamepad-focus:focus { outline-width: 2px; outline-offset: 2px; }
+html[data-focus-intensity='strong'] button:focus-visible, html[data-focus-intensity='strong'] select:focus-visible, html[data-focus-intensity='strong'] input:focus-visible, html[data-focus-intensity='strong'] summary:focus-visible, html[data-focus-intensity='strong'] .gamepad-focus:focus { outline-width: 4px; outline-offset: 5px; box-shadow: 0 0 0 1px rgba(212,175,55,.28), 0 0 18px rgba(212,175,55,.22); }
 .stream-menu { right: clamp(24px, 5vw, 84px); left: auto; top: 50%; width: min(390px, calc(100vw - 48px)); min-width: 0; padding: 18px; border-color: rgba(232,197,106,.7); border-radius: 12px; background: rgba(13,14,16,.94); transform: translateY(-50%); box-shadow: 0 20px 70px rgba(0,0,0,.62); }
 .stream-menu h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; color: var(--text-primary); font-size: 1rem; }
 .stream-menu button { margin: 4px 0; padding: 14px 16px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-primary); font-size: .96rem; }
 .stream-menu button:hover, .stream-menu button:focus-visible, .stream-menu button.gamepad-focus:focus { background: rgba(213,172,72,.14); border-color: var(--gold); box-shadow: none; }
 .stream-menu-hints { justify-content: space-between; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
 .stream-telemetry { top: 20px; right: 20px; padding: 10px 12px; border-radius: 8px; font-size: 12px; background: rgba(8,9,11,.76); }
-@media (max-width: 720px) { .app-main .settings-grid { grid-template-columns: 1fr; } .stream-menu { right: 16px; width: calc(100vw - 32px); } }
+@media (max-width: 720px) { .settings-layout { grid-template-columns: 1fr; } .setting-row { flex-direction: column; align-items: flex-start; } .setting-row select { min-width: 0; width: 100%; } .app-main .settings-grid { grid-template-columns: 1fr; } .stream-menu { right: 16px; width: calc(100vw - 32px); } }

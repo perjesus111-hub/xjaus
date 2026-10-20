@@ -58,18 +58,60 @@
     <section class="panel" id="panel-cloud" hidden><div class="panel-head"><h2>Cloud Gaming</h2></div><div class="cloud-search-tools"><input id="cloud-search" type="search" placeholder="Buscar juego" aria-label="Buscar juego" data-i18n-aria="searchGame" data-i18n-placeholder="searchGame"><span class="search-shortcuts"><span><kbd class="pad-x">X</kbd> <span data-i18n="search">Buscar</span></span></span></div><section id="cloud-recent" class="cloud-recent" aria-labelledby="cloud-recent-heading" hidden><h3 id="cloud-recent-heading" data-i18n="continuePlaying">Continuar jugando</h3><div id="cloud-recent-grid" class="recent-grid"></div></section><div id="cloud-filters" class="cloud-filters" role="group" aria-label="Filtrar juegos" data-i18n-aria="filterGames"></div><div id="cloud-container" class="card-grid"><p class="muted" data-i18n="openCloudTab">Abre esta pestaña para cargar los juegos.</p></div></section>
     <section class="panel" id="panel-settings" hidden>
       <div class="panel-head"><h2 data-i18n="settings">Configuración</h2></div>
-      <div class="settings-grid"><label class="setting" data-i18n="language">Idioma<select id="app-language"><option value="auto" data-i18n="autoLanguage">Automático (sistema)</option><option value="es" lang="es">Español</option><option value="en" lang="en">English</option></select></label>
-        <label class="setting" data-i18n="resolution">Resolución<select id="stream-resolution"><option value="1280x720">720p</option><option value="1920x1080" selected>1080p</option><option value="2560x1440">1440p (QHD)</option></select></label>
-        <label class="setting" data-i18n="bitrate">Bitrate máximo (Mbps)<input id="stream-bitrate" type="range" min="15000" max="45000" step="1000" value="30000"><output id="stream-bitrate-value">30 Mbps</output></label>
-        <label class="setting" data-i18n="codec">Códec preferido<select id="stream-codec"><option value="hevc" data-i18n="hevc">HEVC (si está disponible)</option><option value="h264" data-i18n="h264">H.264 High (si está disponible)</option><option value="auto" selected data-i18n="automatic">Automático</option></select></label>
-        <label class="setting" data-i18n="audio">Audio<select id="stream-audio"><option value="opus" selected data-i18n="stereo">Opus estéreo</option><option value="default" data-i18n="default">Predeterminado</option></select></label>
-        <label class="setting" data-i18n="audioGain">Ganancia de audio<input id="stream-audioGain" type="range" min="1" max="1.5" step="0.05" value="1"><output id="stream-gain-value">1×</output></label>
+      <div class="settings-layout">
+        <nav class="settings-subnav" role="tablist" aria-orientation="vertical" aria-label="Secciones de configuración" data-i18n-aria="settingsSections">
+          <button class="settings-nav-item active" role="tab" type="button" data-settings-section="general" aria-selected="true" aria-controls="settings-panel-general" data-i18n="settingsGeneral">General</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="streaming" aria-selected="false" aria-controls="settings-panel-streaming" tabindex="-1" data-i18n="settingsStreaming">Streaming</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="video" aria-selected="false" aria-controls="settings-panel-video" tabindex="-1" data-i18n="settingsVideo">Video y audio</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="interfaz" aria-selected="false" aria-controls="settings-panel-interfaz" tabindex="-1" data-i18n="settingsInterfaz">Interfaz</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="diagnostico" aria-selected="false" aria-controls="settings-panel-diagnostico" tabindex="-1" data-i18n="settingsDiagnostico">Diagnóstico</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="acerca" aria-selected="false" aria-controls="settings-panel-acerca" tabindex="-1" data-i18n="settingsAcerca">Acerca de</button>
+        </nav>
+        <div class="settings-sections">
+          <div class="settings-section" role="tabpanel" id="settings-panel-general" data-settings-panel="general">
+            <div id="settings-profile-slot" class="settings-profile-slot"></div>
+            <div class="settings-rows">
+              <div class="setting-row"><label for="app-language" data-i18n="language">Idioma</label><select id="app-language"><option value="auto" data-i18n="autoLanguage">Automático (sistema)</option><option value="es" lang="es">Español</option><option value="en" lang="en">English</option></select></div>
+              <div class="setting-row"><label for="ui-stats-on-start" data-i18n="statsOnStart">Mostrar estadísticas al iniciar transmisión</label><input id="ui-stats-on-start" class="switch" type="checkbox" role="switch"></div>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-streaming" data-settings-panel="streaming" hidden>
+            <div class="settings-grid">
+              <label class="setting" data-i18n="resolution">Resolución<select id="stream-resolution"><option value="1280x720">720p</option><option value="1920x1080" selected>1080p</option><option value="2560x1440">1440p (QHD)</option></select></label>
+              <label class="setting" data-i18n="bitrate">Bitrate máximo (Mbps)<input id="stream-bitrate" type="range" min="15000" max="45000" step="1000" value="30000"><output id="stream-bitrate-value">30 Mbps</output></label>
+              <label class="setting" data-i18n="codec">Códec preferido<select id="stream-codec"><option value="hevc" data-i18n="hevc">HEVC (si está disponible)</option><option value="h264" data-i18n="h264">H.264 High (si está disponible)</option><option value="auto" selected data-i18n="automatic">Automático</option></select></label>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-video" data-settings-panel="video" hidden>
+            <div class="settings-rows">
+              <div class="setting-row"><label for="stream-audio" data-i18n="audio">Audio</label><select id="stream-audio"><option value="opus" selected data-i18n="stereo">Opus estéreo</option><option value="default" data-i18n="default">Predeterminado</option></select></div>
+              <div class="setting-row setting-row-range"><label for="stream-audioGain" data-i18n="audioGain">Ganancia de audio</label><div class="range-control"><input id="stream-audioGain" type="range" min="1" max="1.5" step="0.05" value="1"><output id="stream-gain-value">1×</output></div></div>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-interfaz" data-settings-panel="interfaz" hidden>
+            <div class="settings-rows">
+              <div class="setting-row"><label for="ui-density" data-i18n="uiDensity">Densidad del catálogo</label><select id="ui-density"><option value="comfortable" selected data-i18n="densityComfortable">Cómoda</option><option value="compact" data-i18n="densityCompact">Compacta</option></select></div>
+              <div class="setting-row"><label for="ui-card-titles" data-i18n="uiCardTitles">Títulos de portadas</label><select id="ui-card-titles"><option value="visible" selected data-i18n="titlesVisible">Siempre visibles</option><option value="focus" data-i18n="titlesFocus">Al enfocar</option></select></div>
+              <div class="setting-row"><label for="ui-focus-intensity" data-i18n="uiFocusIntensity">Intensidad del foco</label><select id="ui-focus-intensity"><option value="subtle" data-i18n="focusSubtle">Suave</option><option value="normal" selected data-i18n="focusNormal">Normal</option><option value="strong" data-i18n="focusStrong">Fuerte</option></select></div>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-diagnostico" data-settings-panel="diagnostico" hidden>
+            <div class="diagnostics"><h3 data-i18n="technicalDiagnostics">Diagnóstico técnico</h3><pre id="output" aria-live="polite" data-i18n="ready">Listo.</pre><button id="copy-diagnostics" type="button" data-i18n="copyReport">Copiar informe técnico</button></div>
+            <section class="support-card" aria-labelledby="support-us">
+              <button id="support-us" type="button" aria-describedby="support-desc" data-i18n="support_us">Apóyanos</button>
+              <p id="support-desc" class="muted" data-i18n="support_desc">Apoya el desarrollo continuo de XJAUS</p>
+            </section>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-acerca" data-settings-panel="acerca" hidden>
+            <div class="settings-rows about-rows">
+              <div class="setting-row"><span data-i18n="aboutVersion">Versión</span><output id="app-version"></output></div>
+              <div class="setting-row"><span data-i18n="aboutRepo">Repositorio</span><button id="open-repo" type="button" class="link-btn">github.com/perjesus111-hub/xjaus</button></div>
+            </div>
+            <p class="muted about-license" data-i18n="aboutLicense">XJAUS es software libre bajo la GNU General Public License v3.</p>
+          </div>
+        </div>
       </div>
-      <details class="diagnostics"><summary data-i18n="technicalDiagnostics">Diagnóstico técnico</summary><pre id="output" aria-live="polite" data-i18n="ready">Listo.</pre><button id="copy-diagnostics" type="button">Copiar informe técnico</button></details>
-      <section class="support-card" aria-labelledby="support-us">
-        <button id="support-us" type="button" aria-describedby="support-desc" data-i18n="support_us">Apóyanos</button>
-        <p id="support-desc" class="muted" data-i18n="support_desc">Apoya el desarrollo continuo de XJAUS</p>
-      </section>
+    </section>
     </main>
     </div>
   </section>

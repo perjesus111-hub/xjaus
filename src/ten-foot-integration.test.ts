@@ -33,5 +33,7 @@ it('real main UI: synthetic RB changes tabs/focus, local pills keep focus, favor
  expect(document.querySelector('#cloud-recent')?.hasAttribute('hidden')).toBe(true);
  frame(1000);expect(document.querySelector('#panel-cloud')?.hasAttribute('hidden')).toBe(false);
  pad.buttons[5].pressed=false;frame(1016);pad.buttons[5].pressed=true;frame(1250);
- expect(document.querySelector('#panel-settings')?.hasAttribute('hidden')).toBe(false);expect(document.activeElement?.id).toBe('app-language');
+ expect(document.querySelector('#panel-settings')?.hasAttribute('hidden')).toBe(false);
+ // Gamepad lands on the settings subnavigation (first real focus target).
+ expect(document.activeElement?.getAttribute('data-settings-section')).toBe('general');
 });

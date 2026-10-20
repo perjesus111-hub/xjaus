@@ -8,6 +8,12 @@ import { removeUnfavoritedCards } from './favorite-focus';
 import { ViewFocusIntent } from './ten-foot';
 localizeDocument();
 document.documentElement.classList.add("i18n-ready");
+// UI-only preferences (density/focus/cover titles/stats autoplay): applied at
+// startup, before panels paint; localStorage-only, never streamed to the engine.
+let uiStorage: Pick<Storage, "getItem" | "setItem"> | undefined;
+try { uiStorage = typeof localStorage !== "undefined" ? localStorage : undefined; } catch { uiStorage = undefined; }
+const uiPreferences = createUiPreferencesStore(uiStorage);
+applyUiPreferences(uiPreferences.load());
 const controllerPresence=createControllerPresence();
 window.addEventListener('pagehide',()=>controllerPresence.dispose());
 import { CloudLibrary, LIBRARY_FILTERS, filterLibrary, bindSuccessfulCloudPlayback, type LibraryFilter } from './cloud-library';
@@ -23,6 +29,9 @@ import { createCloudGridController } from "./cloud-grid";
 import { readMetadata, writeMetadata, missingMetadataIds } from "./catalog-cache";
 import { recommendedBitrate } from "./stream-options";
 import { createSettingsStore, engineSettings, type StreamSettings } from "./settings";
+import { applyUiPreferences, createUiPreferencesStore, type UiPreferences } from "./ui-preferences";
+import { initSettingsNavigation } from "./settings-nav";
+import { version as appVersion } from "../package.json";
 import { microsoftSessionExpired, appendMicrosoftReauth } from "./stream-auth";
 import { consolePresentation } from "./console-presentation";
 import { showStreamLoading, bindLoadingPlayback, disposeStreamLoading } from "./loading-presentation";
@@ -565,8 +574,10 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
       const value=(n:number|null,digits=1)=>n===null?'—':n.toFixed(digits);
       statsPanel.textContent=`FPS ${value(stats.fps)} · ${value(stats.mbps)} Mbps\nRTT ${value(stats.rttMs)} ms · ${t('packetLoss')} ${value(stats.lossPercent)}%\n${t('decodeTime')} ${value(stats.decodeMs,2)} ms`;
     });
-    let statsRequested=false;
+    let statsRequested=uiPreferences.current.statsOnStart;
     const syncStatsVisibility=()=>telemetry.setVisible(statsRequested&&!document.hidden);
+    if (statsRequested) statsPanel.hidden=false;
+    syncStatsVisibility();
     const toggleTelemetry=()=>{if(!active() || !overlay.hidden)return;statsRequested=!statsRequested;statsPanel.hidden=!statsRequested;syncStatsVisibility();};
     document.addEventListener('visibilitychange',syncStatsVisibility);
     const menu=mountStreamMenu(playerScreen,{setModal:value=>{controller.gamepad.setModal(value);if(!value)hud.reveal();},toggleTelemetry,disconnect:stopGame,exit:async()=>{await invoke('app_exit');}});
@@ -683,8 +694,9 @@ get<HTMLButtonElement>('support-us').addEventListener('click',()=>{
 // --- Perfil Xbox en Ajustes (cuenta opaca + caché por accountScope) ---
 get<HTMLButtonElement>('refresh-consoles')?.addEventListener('click',()=>consolePolling.refresh());
 const settingsGrid = document.querySelector<HTMLElement>("#panel-settings .settings-grid");
-const profilePanel = settingsGrid
-  ? createProfilePanel(settingsGrid, {
+const profileSlot = document.querySelector<HTMLElement>("#settings-profile-slot");
+const profilePanel = profileSlot
+  ? createProfilePanel(profileSlot, {
       fetchProfile: async () => {
         const generation = catalogGeneration;
         const profile = await invoke<XboxProfile>("xbox_profile");
@@ -736,6 +748,28 @@ for (const key of controls) get<HTMLInputElement>(`stream-${key}`).addEventListe
   updateStreamLabels();
   void settingsStore.save(settings).then(updateSettingsDiagnostics).catch(() => notice(() => t('saveSettingsFailed')));
 });
+// --- Subnavegación de Configuración (mockup: subnav con iconos + panel por sección) ---
+initSettingsNavigation(document);
+// --- Preferencias locales de interfaz (xjaus:ui:v1; nunca tocan el streaming) ---
+const uiControls = { density: get<HTMLSelectElement>('ui-density'), cardTitles: get<HTMLSelectElement>('ui-card-titles'), focusIntensity: get<HTMLSelectElement>('ui-focus-intensity'), statsOnStart: get<HTMLInputElement>('ui-stats-on-start') };
+function hydrateUiControls(prefs: UiPreferences): void {
+  uiControls.density.value = prefs.density;
+  uiControls.cardTitles.value = prefs.cardTitles;
+  uiControls.focusIntensity.value = prefs.focusIntensity;
+  uiControls.statsOnStart.checked = prefs.statsOnStart;
+}
+hydrateUiControls(uiPreferences.current);
+for (const control of Object.values(uiControls)) control.addEventListener('change', () => {
+  applyUiPreferences(uiPreferences.save({
+    density: uiControls.density.value as UiPreferences['density'],
+    cardTitles: uiControls.cardTitles.value as UiPreferences['cardTitles'],
+    focusIntensity: uiControls.focusIntensity.value as UiPreferences['focusIntensity'],
+    statsOnStart: uiControls.statsOnStart.checked,
+  }));
+});
+// --- Acerca de: versión real del paquete + repositorio oficial ---
+get<HTMLElement>('app-version').textContent = appVersion;
+get<HTMLButtonElement>('open-repo').addEventListener('click', () => { void openUrl('https://github.com/perjesus111-hub/xjaus').catch(error => notice(() => t('browserError', { error: errorText(error) }))); });
 function searchInput() { catalogSearchPending=true; catalogPager.reset(); appendBatch=null; metadataQueue.cancelPending(); searchController.input(cloudSearch.value); }
 cloudSearch.addEventListener("input", searchInput);
 cloudSearch.addEventListener("search", searchInput);
