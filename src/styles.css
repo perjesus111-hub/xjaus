@@ -636,6 +636,12 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .sidebar-brand span { color: var(--gold); margin-right: 2px; }
 .sidebar-nav { display: grid; gap: 6px; }
 .sidebar-nav .tab { display: flex; align-items: center; min-height: 46px; width: 100%; padding: 11px 14px; text-align: left; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-secondary); background: transparent; }
+.sidebar-nav .tab::before { width: 20px; margin-right: 11px; color: var(--text-secondary); font: 600 1rem/1 system-ui; text-align: center; }
+.sidebar-nav .tab[data-action='home']::before { content: '⌂'; }
+.sidebar-nav .tab[data-action='cloud']::before { content: '☁'; }
+.sidebar-nav .tab[data-action='consoles']::before { content: '▣'; }
+.sidebar-nav .tab[data-action='settings']::before { content: '⚙'; }
+.sidebar-nav .tab.active::before { color: var(--gold-bright); }
 .sidebar-nav .tab:hover { color: var(--text-primary); background: var(--bg-hover); }
 .sidebar-nav .tab.active { color: var(--gold-bright); border-color: var(--gold-muted); background: linear-gradient(90deg, rgba(213,172,72,.20), rgba(213,172,72,.05)); box-shadow: inset 3px 0 0 var(--gold); }
 .sidebar-footer { margin: auto 10px 0; padding-top: var(--space-6); color: var(--text-muted); font-size: .78rem; line-height: 1.5; }
