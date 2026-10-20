@@ -583,6 +583,13 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .stream-menu h2 {margin:0 0 24px;}
 .stream-menu button {display:block;width:100%;padding:16px 24px;margin:10px 0;text-align:left;background:#24262b;color:inherit;border:2px solid transparent;border-radius:10px;font-size:1.15rem;}
 .stream-menu button:focus-visible {outline:none;border-color:#ffc83b;background:#463c22;}
+/* Programmatic pad focus must highlight even without :focus-visible (Chromium skips it without prior keyboard use). */
+.stream-menu button.gamepad-focus:focus {outline:none;border-color:#ffc83b;background:#463c22;box-shadow:0 0 0 4px #ffc83b26;}
+.stream-menu-hints {display:flex;gap:18px;justify-content:flex-end;margin-top:18px;color:var(--text-dim);font-size:.78rem;white-space:nowrap;}
+.stream-menu-hints span {display:inline-flex;align-items:center;gap:6px;}
+.stream-menu-hints kbd {display:inline-grid;place-items:center;width:21px;height:21px;border:1px solid #ffffff30;border-radius:5px;font:600 .7rem system-ui;}
+.stream-menu-hints .hint-a {border-radius:50%;color:var(--gold);border-color:var(--gold-dim);}
+.stream-menu-hints .hint-b {border-radius:50%;color:#7db8ff;border-color:#7db8ff80;}
 .stream-telemetry {position:absolute;top:80px;right:24px;z-index:85;padding:14px 18px;background:#090b10d9;color:#fff;border:1px solid #d4af3766;border-radius:10px;pointer-events:none;font:14px/1.7 monospace;}
 .stream-reconnecting {position:absolute;bottom:10%;left:50%;transform:translateX(-50%);padding:16px 24px;border-radius:12px;background:#17130dee;color:#ffc83b;z-index:85;}
 .setting input[type=range] {accent-color:#d4af37;width:100%;}
