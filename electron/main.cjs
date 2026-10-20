@@ -103,7 +103,9 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   window = new BrowserWindow({
     width: 1240, height: 800, minWidth: 860, minHeight: 600, title: 'XJAUS',
-    backgroundColor: '#0a0a0a', autoHideMenuBar: true, icon: iconPath(app),
+    backgroundColor: '#090a0b', autoHideMenuBar: true, icon: iconPath(app),
+    titleBarStyle: 'hidden',
+    ...(process.platform !== 'darwin' ? { titleBarOverlay: { color: '#090a0b', symbolColor: '#f4f2ec', height: 40 } } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, sandbox: true, nodeIntegration: false,

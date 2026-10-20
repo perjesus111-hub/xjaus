@@ -636,7 +636,9 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .sidebar-nav .tab.active { color: var(--gold-bright); border-color: var(--gold-muted); background: linear-gradient(90deg, rgba(213,172,72,.20), rgba(213,172,72,.05)); box-shadow: inset 3px 0 0 var(--gold); }
 .sidebar-footer { margin: auto 10px 0; padding-top: var(--space-6); color: var(--text-muted); font-size: .78rem; line-height: 1.5; }
 .app-main { min-width: 0; padding: 0 var(--space-8) var(--space-8); background: radial-gradient(70% 45% at 70% -10%, rgba(213,172,72,.08), transparent 70%), var(--bg-app); }
-.app-main .topbar { min-height: 70px; padding: 0; border-color: var(--border-subtle); background: transparent; }
+.app-main .topbar { min-height: 70px; padding: 0; border-color: var(--border-subtle); background: transparent; -webkit-app-region: drag; }
+.app-main .topbar :is(button, input, select, a, .profile-chip) { -webkit-app-region: no-drag; }
+.app-main .topbar .page-context { padding-left: 94px; }
 .app-main .panel { margin: var(--space-6) 0 0; padding: var(--space-6); border-color: var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: none; }
 .app-main .panel-head h2 { color: var(--text-primary); font-size: clamp(1.25rem, 2vw, 1.75rem); font-weight: 700; text-transform: none; }
 .app-main .card-grid { gap: var(--space-4); }
