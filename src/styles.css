@@ -601,3 +601,45 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .setting output {font-variant-numeric:tabular-nums;color:#ffc83b;}
 
 .search-shortcuts .pad-x {color:#7db8ff;border-color:#7db8ff80;}
+
+/* Black-and-gold application shell: structural layer for the desktop redesign. */
+:root {
+  --bg-app: #090a0b;
+  --bg-sidebar: #0d0e10;
+  --bg-surface: #151619;
+  --bg-surface-raised: #1d1e21;
+  --bg-hover: #25231d;
+  --border-subtle: #2a2b2e;
+  --gold-bright: #e8c56a;
+  --gold-muted: #8f7339;
+  --text-primary: #f4f2ec;
+  --text-secondary: #b1b0ac;
+  --text-muted: #898a8c;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
+.app-shell { display: grid; grid-template-columns: clamp(220px, 19vw, 300px) minmax(0, 1fr); min-height: 100vh; background: var(--bg-app); }
+.sidebar { display: flex; flex-direction: column; min-height: 100vh; padding: 22px 14px 20px; background: var(--bg-sidebar); border-right: 1px solid var(--border-subtle); }
+.sidebar-brand { padding: 2px 10px 26px; color: var(--text-primary); font-size: 1.25rem; font-weight: 800; letter-spacing: -.06em; }
+.sidebar-brand span { color: var(--gold); margin-right: 2px; }
+.sidebar-nav { display: grid; gap: 6px; }
+.sidebar-nav .tab { display: flex; align-items: center; min-height: 46px; width: 100%; padding: 11px 14px; text-align: left; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-secondary); background: transparent; }
+.sidebar-nav .tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.sidebar-nav .tab.active { color: var(--gold-bright); border-color: var(--gold-muted); background: linear-gradient(90deg, rgba(213,172,72,.20), rgba(213,172,72,.05)); box-shadow: inset 3px 0 0 var(--gold); }
+.sidebar-footer { margin: auto 10px 0; padding-top: var(--space-6); color: var(--text-muted); font-size: .78rem; line-height: 1.5; }
+.app-main { min-width: 0; padding: 0 var(--space-8) var(--space-8); background: radial-gradient(70% 45% at 70% -10%, rgba(213,172,72,.08), transparent 70%), var(--bg-app); }
+.app-main .topbar { min-height: 70px; padding: 0; border-color: var(--border-subtle); background: transparent; }
+.app-main .panel { margin: var(--space-6) 0 0; padding: var(--space-6); border-color: var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: none; }
+.app-main .panel-head h2 { color: var(--text-primary); font-size: clamp(1.25rem, 2vw, 1.75rem); font-weight: 700; text-transform: none; }
+.app-main .card-grid { gap: var(--space-4); }
+.app-main .console-card, .app-main .game-card { border-color: var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface-raised); }
+.app-main .console-card:hover, .app-main .game-card:hover { border-color: var(--gold-muted); }
+@media (max-width: 800px) { .app-shell { grid-template-columns: 1fr; } .sidebar { min-height: auto; padding: 12px; border-right: 0; border-bottom: 1px solid var(--border-subtle); } .sidebar-brand, .sidebar-footer { display: none; } .sidebar-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .sidebar-nav .tab { justify-content: center; padding-inline: 8px; font-size: .78rem; } .app-main { padding-inline: var(--space-4); } }
