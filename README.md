@@ -31,9 +31,9 @@ Captured from the packaged Electron AppImage on Linux (XJAUS 1.2.0). Account det
 | :---: | :---: |
 | ![Home](docs/screenshots/01_home_carousel.png) | ![Featured dialog](docs/screenshots/02_featured_modal.png) |
 | **Cloud Gaming catalog** | **Console management** |
-| ![Cloud catalog](docs/screenshots/03_cloud_catalog.png) | ![Consoles](docs/screenshots/04_consoles.png) |
+| ![Cloud catalog](docs/screenshots/03_cloud_catalog.png) | ![Consoles](docs/screenshots/06_consoles.png) |
 | **Settings — Streaming** | **Settings — Diagnostics** |
-| ![Settings streaming](docs/screenshots/05_settings_streaming.png) | ![Settings diagnostics](docs/screenshots/06_settings_diagnostico.png) |
+| ![Settings streaming](docs/screenshots/08_settings_streaming.png) | ![Settings diagnostics](docs/screenshots/11_settings_diagnostico.png) |
 
 ## Packages
 
