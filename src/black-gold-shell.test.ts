@@ -16,7 +16,7 @@ it('provides the black-and-gold application shell with a semantic sidebar', () =
   expect(css).toContain('.app-shell');
   expect(html).toContain('data-action="home"');
   expect(html).toContain('id="panel-home"');
-  expect(html).toContain('class="dashboard-hero"');
+  expect(html).toContain('class="dashboard-hero featured-hero"');
   expect(html).toContain('class="dashboard-action-card"');
   expect(css).toContain('.dashboard-hero');
   expect(css).toContain('.dashboard-action-card');
