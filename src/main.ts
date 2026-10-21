@@ -34,6 +34,7 @@ import { initSettingsNavigation } from "./settings-nav";
 import { initCloudContext } from "./cloud-context";
 import { testVibration } from "./haptics-test";
 import { captureVideoFrame } from "./video-frame";
+import { createToastManager } from './toast-manager';
 import { version as appVersion } from "../package.json";
 import { microsoftSessionExpired, appendMicrosoftReauth } from "./stream-auth";
 import { consolePresentation } from "./console-presentation";
@@ -67,6 +68,7 @@ const playerScreen = get<HTMLElement>("player-screen");
 const loginFeedback = get<HTMLElement>("login-feedback");
 const diagnostics = get<HTMLElement>("output");
 const toast = get<HTMLElement>("toast");
+const toastManager = createToastManager(() => { toast.hidden = false; }, () => { clearTextBinding(toast); toast.replaceChildren(); toast.hidden = true; });
 const consoleGrid = get<HTMLElement>("consoles-container");
 const remoteStatus = get<HTMLElement>('remote-status');
 const cloudGrid = get<HTMLElement>("cloud-container");
@@ -164,7 +166,7 @@ const catalogNavigation = createCatalogNavigation(cloudSearch, cloudGrid, () => 
 document.addEventListener('focusin', event=>{document.querySelectorAll('.gamepad-focus').forEach(el=>{if(el!==event.target)el.classList.remove('gamepad-focus');});});
 const focusObserver=new MutationObserver(()=>{if(!dashboard.hidden && !starting && !session)viewFocus.flush();});
 focusObserver.observe(dashboard,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
-window.addEventListener("pagehide", () => { catalogPager.dispose(); searchController.dispose(); metadataQueue.dispose(); catalogNavigation.dispose(); focusObserver.disconnect(); });
+window.addEventListener("pagehide", () => { toastManager.dispose(); catalogPager.dispose(); searchController.dispose(); metadataQueue.dispose(); catalogNavigation.dispose(); focusObserver.disconnect(); });
 
 function errorText(error: unknown): string { return errorMessage(error); }
 function notice(copy: string | (() => string)): void {
@@ -174,9 +176,10 @@ function notice(copy: string | (() => string)): void {
   const copyNode=document.createElement('span');
   bindText(copyNode,render);
   toast.replaceChildren(copyNode);
-  toast.hidden = false;
+  const expired = microsoftSessionExpired(text);
+  toastManager.show(text, expired ? 6500 : 4000);
   clearTextBinding(diagnostics); diagnostics.textContent = text;
-  if (microsoftSessionExpired(text)) {
+  if (expired) {
     appendMicrosoftReauth(toast, () => {
       // Retain the secure store; the existing OAuth flow replaces it on success.
       setScreen("login");
@@ -321,7 +324,7 @@ function renderHomeRecent(consoles:ConsoleItem[]){
       if(target===entry.id)void startGame('home',target,title.textContent||entry.title,undefined,item);
     },true));grid.append(card);
   }
-  if(grid.childElementCount)consoleGrid.before(section);
+  if(grid.childElementCount)get<HTMLElement>('panel-home').querySelector('.dashboard-recent')?.before(section);
 }
 const consolePolling = createConsolePolling(async () => {
   // SmartGlass y /v6 son independientes. Si uno falla, mostrar el otro sin bloquear.
@@ -336,7 +339,15 @@ const consolePolling = createConsolePolling(async () => {
   const consoles = smart.status === "fulfilled" ? extractConsoles(smart.value) : [];
   const servers = homeServers ? extractConsoles(homeServers) : [];
   const all = consoles.length ? consoles : servers;
-  renderConsoles(all);
+  const unique = new Map<string, ConsoleItem>();
+  for (const item of all) {
+    const identity = resolveHomeTarget(item, homeServers, all.length) || item.id || item.deviceName || item.name;
+    if (!identity) continue;
+    // Prefer the entry that exposes a playable target; never dedupe by name alone.
+    const previous = unique.get(identity);
+    if (!previous || (!resolveHomeTarget(previous, homeServers, all.length) && resolveHomeTarget(item, homeServers, all.length))) unique.set(identity, item);
+  }
+  renderConsoles([...unique.values()]);
 }, () => !document.hidden && !dashboard.hidden && playerScreen.hidden && activeTab==='consoles');
 window.addEventListener('pagehide',()=>consolePolling.dispose());
 function makeGameCard(game: CloudTitle): HTMLElement {

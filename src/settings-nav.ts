@@ -29,7 +29,18 @@ export function initSettingsNavigation(doc: Document): SettingsNavigation {
     return true;
   }
 
+  const nav = items[0]?.closest<HTMLElement>('.settings-subnav');
+  const selectFrom = (target: EventTarget | null, focus = false): boolean => {
+    const item = (target as Element | null)?.closest?.<HTMLButtonElement>('[data-settings-section]');
+    return item ? select(item.dataset.settingsSection as SettingsSection, focus) : false;
+  };
+  // Delegate from the stable nav root; nested icon/text targets and pointer
+  // delivery now share the same path as direct keyboard activation.
+  nav?.addEventListener('pointerdown', (event) => { selectFrom(event.target); });
+  nav?.addEventListener('click', (event) => { selectFrom(event.target); });
+
   for (const item of items) {
+    // that do not bubble synthetic activation events.
     item.addEventListener('click', () => { select(item.dataset.settingsSection as SettingsSection); });
     // Roving focus without selection: arrows move focus, Enter/click/A selects.
     item.addEventListener('keydown', (event) => {
