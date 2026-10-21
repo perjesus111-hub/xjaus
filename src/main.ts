@@ -167,10 +167,12 @@ function openFeaturedDialog(game: CloudTitle): void {
   const close=()=>{featuredDialog=undefined;if(featuredPadFrame!==undefined)cancelAnimationFrame(featuredPadFrame);featuredPadFrame=undefined;featuredPadButtons.clear();dialog.close();dialog.remove();featuredPaused=false;syncFeaturedTimer();origin?.focus();};
   cancel.addEventListener('click',close); dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   favorite.addEventListener('click',()=>{library().toggle(game);refreshFavorite();renderCloud();renderHomeFeatured();});
-  play.addEventListener('click',()=>{close();libraryFilter='all';catalogQuery='';cloudSearch.value='';appendBatch=null;switchTab('cloud');renderCloud();const card=document.querySelector<HTMLElement>(`#cloud-container [data-title-id="${CSS.escape(game.titleId)}"]`);card?.querySelector<HTMLButtonElement>('.connect-btn')?.click();});
+  play.addEventListener('click',()=>{close();libraryFilter='all';catalogQuery=gameDisplayName(game);cloudSearch.value=catalogQuery;catalogVisible=24;appendBatch=null;switchTab('cloud',false);renderCloud();requestAnimationFrame(()=>{const card=document.querySelector<HTMLElement>(`#cloud-container [data-title-id="${CSS.escape(game.titleId)}"]`);const connect=card?.querySelector<HTMLButtonElement>('.connect-btn');if(!connect){notice(()=>t('unavailableGame'));return;}connect.focus();connect.click();});});
   actions.append(play,favorite,cancel); dialog.append(art,title,actions); document.body.append(dialog); featuredDialog=dialog; featuredPadButtons.clear(); dialog.showModal();play.focus(); featuredPadFrame=requestAnimationFrame(pollFeaturedDialog);
 }
-featuredOpen.addEventListener('click',()=>{const game=featuredGames.find(item=>item.titleId===featuredOpen.dataset.titleId);if(game)openFeaturedDialog(game);});
+function openCurrentFeatured(event?: Event): void { event?.stopPropagation(); const game=featuredGames.find(item=>item.titleId===featuredOpen.dataset.titleId);if(game)openFeaturedDialog(game); }
+featuredOpen.addEventListener('click',openCurrentFeatured);
+featuredHero.addEventListener('click',event=>{if((event.target as Element).closest('.featured-controls, #featured-open'))return;openCurrentFeatured(event);});
 function libraryTitles() { return filterLibrary(cloudTitles,libraryFilter,library().favorites(),library().recent(cloudTitles).map(g=>g.titleId)); }
 const recentSection = get<HTMLElement>('cloud-recent');
 const recentGrid = get<HTMLElement>('cloud-recent-grid');
