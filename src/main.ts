@@ -115,7 +115,7 @@ let featuredPaused = false;
 function dayKey() { return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 function renderHomeFeatured() {
   featuredGames = featuredForDay(cloudTitles, dayKey());
-  if (!featuredGames.length) { featuredOpen.disabled=true; return; }
+  if (!featuredGames.length) { featuredOpen.disabled=true; featuredTitle.textContent=loadingCatalog?'Cargando juegos destacados…':'No hay juegos de Cloud Gaming disponibles'; featuredMeta.textContent=loadingCatalog?'Verificando tu catálogo real…':'Vuelve a intentarlo desde Cloud Gaming.'; featuredHero.style.backgroundImage='linear-gradient(90deg, rgba(5,7,9,.94), rgba(18,20,23,.78))'; featuredIndicators.replaceChildren(); return; }
   featuredIndex %= featuredGames.length;
   const game=featuredGames[featuredIndex]!;
   featuredTitle.textContent=gameDisplayName(game);
@@ -316,7 +316,7 @@ function switchTab(tab: Tab, focusView = true): void {
   syncFeaturedTimer();
   controllerPresence.sync();
   consolePolling.sync();
-  if (tab === "cloud" && !loadingCatalog && cloudTitles.length === 0) void loadCloud();
+  if ((tab === "cloud" || tab === "home") && !loadingCatalog && cloudTitles.length === 0) void loadCloud();
   syncCatalogPager();
   if (focusView) viewFocus.begin(get<HTMLElement>(`panel-${tab}`), tab==='cloud'? '#cloud-container .game-card .connect-btn' : tab==='consoles'? '.console-card button' : tab==='home' ? '.dashboard-action-card' : 'select,input,button');
 }

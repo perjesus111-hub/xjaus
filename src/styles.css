@@ -652,7 +652,7 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .app-main .topbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
 .app-main .topbar .profile-chip { min-width: 0; max-width: min(340px, 28vw); }
 .app-main .topbar .profile-chip-name, .app-main .topbar .profile-chip-meta { overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 1100px) { .app-main .topbar { padding-right: 154px; grid-template-columns: auto minmax(0, 1fr) auto; } .app-main .topbar .controller-pill { display: none; } .app-main .topbar .profile-chip { max-width: min(280px, 34vw); } }
+@media (max-width: 1100px) { .app-main .topbar { padding-right: 154px; grid-template-columns: auto minmax(0, 1fr) auto auto; } .app-main .topbar .controller-pill { display: none; } .app-main .topbar .profile-chip { max-width: min(280px, 34vw); } }
 @media (max-width: 900px) { .app-main .topbar { padding-right: 154px; } .app-main .topbar .profile-chip-meta { display: none; } }
 @media (max-width: 720px) { .app-main .topbar { padding-right: 124px; } .app-main .topbar .profile-chip { max-width: 180px; } }
 .app-main .topbar :is(button, input, select, a, .profile-chip) { -webkit-app-region: no-drag; }
@@ -673,7 +673,7 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .featured-arrow { position: absolute; z-index: 2; top: 50%; width: 40px; height: 40px; border: 1px solid var(--gold-muted); border-radius: 50%; background: rgba(8,9,11,.75); color: var(--gold-bright); font-size: 1.8rem; line-height: 1; cursor: pointer; transform: translateY(-50%); opacity: .22; transition: opacity .16s ease, background .16s ease; }
 .featured-hero:hover .featured-arrow, .featured-hero:focus-within .featured-arrow { opacity: 1; }
 .featured-arrow:hover, .featured-arrow:focus-visible { background: rgba(25,23,17,.96); }
-#featured-prev { left: 18px; } #featured-next { right: 18px; }
+#featured-prev { left: clamp(14px, 2vw, 28px); } #featured-next { right: clamp(14px, 2vw, 28px); }
 .featured-indicators { position: absolute; z-index: 2; right: 24px; bottom: 20px; display: flex; gap: 7px; }
 .featured-indicator { width: 9px; height: 9px; padding: 0; border: 1px solid var(--gold-bright); border-radius: 50%; background: transparent; cursor: pointer; }
 .featured-indicator[aria-current='true'] { background: var(--gold-bright); }
