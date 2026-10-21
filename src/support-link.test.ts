@@ -21,9 +21,13 @@ it('localized final support card: pointer, synthetic dpad/stick focus and single
   document.querySelector<HTMLElement>('#login-screen')!.hidden=true;
   document.querySelector<HTMLElement>('#dashboard')!.hidden=false;
   document.querySelector<HTMLElement>('#panel-settings')!.hidden=false;
+  // Real user flow: the support card lives in the "Diagnóstico" sub-section.
+  document.querySelector<HTMLButtonElement>('[data-settings-section="diagnostico"]')!.click();
   vi.spyOn(window,'getComputedStyle').mockImplementation(()=>({display:'block',visibility:'visible'}) as CSSStyleDeclaration);
   const button=document.querySelector<HTMLButtonElement>('#support-us')!;
-  expect(button.closest('.support-card')).toBe(document.querySelector('#panel-settings')!.lastElementChild);
+  // Support card lives inside the "Diagnóstico" settings sub-section now.
+  expect(button.closest('.support-card')).toBeTruthy();
+  expect(button.closest('[data-settings-panel="diagnostico"]')).toBe(document.querySelector('#settings-panel-diagnostico'));
   i18n.setPreference('es');expect(button.textContent).toBe('Apóyanos');
   expect(document.querySelector('#support-desc')!.textContent).toBe('Apoya el desarrollo continuo de XJAUS');
   i18n.setPreference('en');expect(button.textContent).toBe('Support Us');

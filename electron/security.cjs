@@ -13,7 +13,14 @@ exports.trustedFrame = (frameUrl, topUrl, filePath) => {
     return frame.href === topUrl && frame.protocol === 'file:' && path.resolve(fileURLToPath(frame)) === path.resolve(filePath);
   } catch { return false; }
 };
-exports.externalUrl = value => value === 'https://paypal.me/Comicoon' || exports.externalLoginUrl(value);
+exports.externalUrl = value => exports.repositoryUrl(value) || value === 'https://paypal.me/Comicoon' || exports.externalLoginUrl(value);
+exports.repositoryUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'github.com' && !url.username && !url.password
+      && url.port === '' && url.pathname === '/perjesus111-hub/xjaus' && !url.search && !url.hash;
+  } catch { return false; }
+};
 exports.externalLoginUrl = (value) => {
   try {
     const url = new URL(value);

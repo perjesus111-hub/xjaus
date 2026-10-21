@@ -564,8 +564,16 @@ impl SessionClient {
             test_journal_root: None,
         }
     }
+    pub fn session_kind(&self) -> SessionKind {
+        self.kind
+    }
     pub fn set_transfer_token(&mut self, token: Option<String>) {
         self.transfer_token = token.map(Zeroizing::new);
+    }
+    /// Refresh only the bearer used by in-flight session endpoints. The session
+    /// id/state remains intact; this is safe for a keepalive retry after 401.
+    pub fn set_streaming_token(&mut self, token: String) {
+        self.token = Zeroizing::new(token);
     }
     pub fn set_account_scope(&mut self, scope: Option<String>) -> Result<(), String> {
         if self.kind == SessionKind::Cloud

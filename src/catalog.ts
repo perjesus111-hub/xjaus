@@ -34,6 +34,8 @@ export function normalizeCloudTitles(raw: unknown, metadata: unknown): CloudTitl
     const image = images.find((img) => img.ImagePurpose === "Poster") ?? images.find((img) => img.ImagePurpose === "BoxArt");
     const commercialName = [localized.ProductTitle, title.name, object(title.details).title, object(title.details).name, title.title].map(text).find(name => name && name !== titleId);
     const result: CloudTitle = { titleId, name: commercialName ?? titleId };
+    const description = [localized.ProductDescription, localized.ShortDescription, object(product).Description].map(text).find(Boolean);
+    if (description) result.description = description;
     const productId = text(object(title.details).productId);
     if (productId) result.productId = productId;
     const features=gameFeatures(object(product).Properties);

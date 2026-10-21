@@ -5617,7 +5617,7 @@ dependencies = [
 
 [[package]]
 name = "xjaus-backend"
-version = "1.0.0"
+version = "1.2.0"
 dependencies = [
  "argon2",
  "base64 0.22.1",

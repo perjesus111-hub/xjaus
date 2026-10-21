@@ -8,6 +8,12 @@ import { removeUnfavoritedCards } from './favorite-focus';
 import { ViewFocusIntent } from './ten-foot';
 localizeDocument();
 document.documentElement.classList.add("i18n-ready");
+// UI-only preferences (density/focus/cover titles/stats autoplay): applied at
+// startup, before panels paint; localStorage-only, never streamed to the engine.
+let uiStorage: Pick<Storage, "getItem" | "setItem"> | undefined;
+try { uiStorage = typeof localStorage !== "undefined" ? localStorage : undefined; } catch { uiStorage = undefined; }
+const uiPreferences = createUiPreferencesStore(uiStorage);
+applyUiPreferences(uiPreferences.load());
 const controllerPresence=createControllerPresence();
 window.addEventListener('pagehide',()=>controllerPresence.dispose());
 import { CloudLibrary, LIBRARY_FILTERS, filterLibrary, bindSuccessfulCloudPlayback, type LibraryFilter } from './cloud-library';
@@ -23,6 +29,14 @@ import { createCloudGridController } from "./cloud-grid";
 import { readMetadata, writeMetadata, missingMetadataIds } from "./catalog-cache";
 import { recommendedBitrate } from "./stream-options";
 import { createSettingsStore, engineSettings, type StreamSettings } from "./settings";
+import { applyUiPreferences, createUiPreferencesStore, type UiPreferences } from "./ui-preferences";
+import { initSettingsNavigation } from "./settings-nav";
+import { initCloudContext } from "./cloud-context";
+import { testVibration } from "./haptics-test";
+import { captureVideoFrame } from "./video-frame";
+import { featuredForDay } from './featured-games';
+import { createToastManager } from './toast-manager';
+import { version as appVersion } from "../package.json";
 import { microsoftSessionExpired, appendMicrosoftReauth } from "./stream-auth";
 import { consolePresentation } from "./console-presentation";
 import { showStreamLoading, bindLoadingPlayback, disposeStreamLoading } from "./loading-presentation";
@@ -31,6 +45,7 @@ import { extractConsoles, resolveHomeTarget, type ConsoleItem } from "./ui-state
 
 import { bindPlayerFullscreen } from "./fullscreen";
 import { createProfilePanel, type XboxProfile } from "./profile-panel";
+import { sanitizeDiagnostics } from './diagnostics';
 import { mountStreamMenu } from "./stream-menu";
 import { createStreamTelemetry, ConnectionGrace } from "./stream-telemetry";
 import { createPlayerHudController } from "./hud";
@@ -44,15 +59,19 @@ let connectionAttempt: { id: string; abort: AbortController; tab: Tab; origin: H
 let connectionGeneration = 0;
 
 type Status = { authenticated: boolean; account: string; storage: string; catalogAccountScope?: string };
-type Tab = "consoles" | "cloud" | "settings";
+type Tab = "home" | "consoles" | "cloud" | "settings";
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const screenTitleKeys = { home: 'homeTab', consoles: 'myConsolesTab', cloud: 'cloudTab', settings: 'settings' } as const;
+const screenTitle = get<HTMLElement>('screen-title');
 const loginScreen = get<HTMLElement>("login-screen");
 const dashboard = get<HTMLElement>("dashboard");
 const playerScreen = get<HTMLElement>("player-screen");
 const loginFeedback = get<HTMLElement>("login-feedback");
 const diagnostics = get<HTMLElement>("output");
 const toast = get<HTMLElement>("toast");
+const toastManager = createToastManager(() => { toast.hidden = false; }, () => { clearTextBinding(toast); toast.replaceChildren(); toast.hidden = true; });
 const consoleGrid = get<HTMLElement>("consoles-container");
+const remoteStatus = get<HTMLElement>('remote-status');
 const cloudGrid = get<HTMLElement>("cloud-container");
 const video = get<HTMLVideoElement>("stream-video");
 const overlay = get<HTMLElement>("stream-overlay");
@@ -82,6 +101,81 @@ let libraryFilter: LibraryFilter = 'all';
 const viewFocus = new ViewFocusIntent();
 const tabs: Tab[] = ['consoles','cloud','settings'];
 const library = () => new CloudLibrary(localStorage,catalogScope);
+const featuredHero = get<HTMLElement>('featured-hero');
+const featuredTitle = get<HTMLElement>('featured-title');
+const featuredMeta = get<HTMLElement>('featured-meta');
+const featuredOpen = get<HTMLButtonElement>('featured-open');
+const featuredIndicators = get<HTMLElement>('featured-indicators');
+const homeFavorites = get<HTMLElement>('home-favorites');
+const homeFavoritesGrid = get<HTMLElement>('home-favorites-grid');
+let featuredGames: CloudTitle[] = [];
+let featuredIndex = 0;
+let featuredTimer: ReturnType<typeof setInterval> | undefined;
+let featuredPaused = false;
+function dayKey() { return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
+function renderHomeFeatured() {
+  featuredGames = featuredForDay(cloudTitles, dayKey());
+  if (!featuredGames.length) { featuredOpen.disabled=true; featuredTitle.textContent=loadingCatalog?'Cargando juegos destacados…':'No hay juegos de Cloud Gaming disponibles'; featuredMeta.textContent=loadingCatalog?'Verificando tu catálogo real…':'Vuelve a intentarlo desde Cloud Gaming.'; featuredHero.style.backgroundImage='linear-gradient(90deg, rgba(5,7,9,.94), rgba(18,20,23,.78))'; featuredIndicators.replaceChildren(); return; }
+  featuredIndex %= featuredGames.length;
+  const game=featuredGames[featuredIndex]!;
+  featuredTitle.textContent=gameDisplayName(game);
+  featuredMeta.textContent=game.description || (game.features?.multiplayer ? t('multiplayer') : 'Disponible en Xbox Cloud Gaming');
+  featuredHero.style.backgroundImage=`linear-gradient(90deg, rgba(5,7,9,.94) 0%, rgba(5,7,9,.64) 42%, rgba(5,7,9,.12) 78%), url("${game.heroArt || game.boxArt}")`;
+  featuredOpen.disabled=false; featuredOpen.dataset.titleId=game.titleId;
+  featuredIndicators.replaceChildren(...featuredGames.map((_item,index)=>{const b=document.createElement('button');b.type='button';b.className='featured-indicator';b.setAttribute('aria-label',`${index+1}/${featuredGames.length}`);b.setAttribute('aria-current',String(index===featuredIndex));b.addEventListener('click',()=>{featuredIndex=index;renderHomeFeatured();});return b;}));
+  const favorites=cloudTitles.filter(game=>library().favorites().includes(game.titleId));
+  homeFavorites.hidden=!favorites.length; homeFavoritesGrid.replaceChildren(...favorites.map(makeGameCard));
+}
+function rotateFeatured(delta=1){if(!featuredGames.length)return;featuredIndex=(featuredIndex+delta+featuredGames.length)%featuredGames.length;renderHomeFeatured();}
+function syncFeaturedTimer(){if(featuredTimer!==undefined){clearInterval(featuredTimer);featuredTimer=undefined;}if(!featuredPaused && !document.hidden && activeTab==='home' && !featuredHero.closest('[hidden]') && !matchMedia('(prefers-reduced-motion: reduce)').matches)featuredTimer=setInterval(()=>rotateFeatured(),10000);}
+featuredHero.addEventListener('focusin',()=>{featuredPaused=true;syncFeaturedTimer();});
+featuredHero.addEventListener('focusout',()=>{featuredPaused=false;syncFeaturedTimer();});
+get<HTMLButtonElement>('featured-prev').addEventListener('click',()=>rotateFeatured(-1));
+get<HTMLButtonElement>('featured-next').addEventListener('click',()=>rotateFeatured(1));
+featuredHero.addEventListener('keydown',event=>{if(event.key==='ArrowLeft'){event.preventDefault();rotateFeatured(-1);}if(event.key==='ArrowRight'){event.preventDefault();rotateFeatured(1);}});
+let featuredDialog: HTMLDialogElement | undefined;
+let featuredPadFrame: number | undefined;
+let featuredPadButtons = new Set<number>();
+function snapshotFeaturedPadButtons(): Set<number> {
+  return new Set(Array.from(navigator.getGamepads?.() ?? []).flatMap(pad => pad?.connected && pad.mapping==='standard' ? pad.buttons.flatMap((button,index)=>button.pressed?[index]:[]) : []));
+}
+function pollFeaturedDialog() {
+  if (!featuredDialog?.open) { featuredPadFrame=undefined; return; }
+  for (const pad of navigator.getGamepads?.() ?? []) {
+    if (!pad?.connected || pad.mapping!=='standard') continue;
+    const pressed=new Set(pad.buttons.flatMap((button,index)=>button.pressed?[index]:[]));
+    const edge=(button:number)=>pressed.has(button)&&!featuredPadButtons.has(button);
+    const items=[...featuredDialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    const current=items.indexOf(document.activeElement as HTMLButtonElement);
+    if(edge(1)){featuredDialog.querySelector<HTMLButtonElement>('[data-featured-cancel]')?.click();break;}
+    if(edge(0)){(document.activeElement as HTMLButtonElement)?.click();break;}
+    if(edge(12)||edge(14))items[(Math.max(0,current)-1+items.length)%items.length]?.focus();
+    if(edge(13)||edge(15))items[(Math.max(0,current)+1)%items.length]?.focus();
+    featuredPadButtons=pressed;
+  }
+  featuredPadFrame=requestAnimationFrame(pollFeaturedDialog);
+}
+function openFeaturedDialog(game: CloudTitle): void {
+  featuredPaused=true; syncFeaturedTimer();
+  const origin=document.activeElement as HTMLElement | null;
+  featuredDialog?.remove();
+  const dialog=document.createElement('dialog'); dialog.className='featured-dialog'; dialog.setAttribute('aria-modal','true');
+  const title=document.createElement('h2'); title.id='featured-dialog-title'; title.textContent=gameDisplayName(game); dialog.setAttribute('aria-labelledby',title.id);
+  const art=document.createElement('img'); art.alt=''; art.src=game.boxArt || game.heroArt || ''; art.hidden=!art.src;
+  const actions=document.createElement('div'); actions.className='featured-dialog-actions';
+  const play=document.createElement('button'); play.type='button'; play.className='featured-dialog-play'; play.textContent='Jugar ahora';
+  const favorite=document.createElement('button'); favorite.type='button';
+  const refreshFavorite=()=>{const saved=library().favorites().includes(game.titleId);favorite.textContent=saved?'Quitar de favoritos':'Añadir a favoritos';};refreshFavorite();
+  const cancel=document.createElement('button'); cancel.type='button'; cancel.dataset.featuredCancel='true'; cancel.textContent='Cancelar';
+  const close=()=>{featuredDialog=undefined;if(featuredPadFrame!==undefined)cancelAnimationFrame(featuredPadFrame);featuredPadFrame=undefined;featuredPadButtons.clear();dialog.close();dialog.remove();featuredPaused=false;syncFeaturedTimer();origin?.focus();};
+  cancel.addEventListener('click',close); dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
+  favorite.addEventListener('click',()=>{library().toggle(game);refreshFavorite();renderCloud();renderHomeFeatured();});
+  play.addEventListener('click',()=>{close();libraryFilter='all';catalogQuery=gameDisplayName(game);cloudSearch.value=catalogQuery;catalogVisible=24;appendBatch=null;switchTab('cloud',false);renderCloud();requestAnimationFrame(()=>{const card=document.querySelector<HTMLElement>(`#cloud-container [data-title-id="${CSS.escape(game.titleId)}"]`);const connect=card?.querySelector<HTMLButtonElement>('.connect-btn');if(!connect){notice(()=>t('unavailableGame'));return;}connect.focus();connect.click();});});
+  actions.append(play,favorite,cancel); dialog.append(art,title,actions); document.body.append(dialog); featuredDialog=dialog; featuredPadButtons=snapshotFeaturedPadButtons(); dialog.showModal();play.focus(); featuredPadFrame=requestAnimationFrame(pollFeaturedDialog);
+}
+function openCurrentFeatured(event?: Event): void { event?.stopPropagation(); const game=featuredGames.find(item=>item.titleId===featuredOpen.dataset.titleId);if(game)openFeaturedDialog(game); }
+featuredOpen.addEventListener('click',openCurrentFeatured);
+featuredHero.addEventListener('click',event=>{if((event.target as Element).closest('.featured-controls, #featured-open'))return;openCurrentFeatured(event);});
 function libraryTitles() { return filterLibrary(cloudTitles,libraryFilter,library().favorites(),library().recent(cloudTitles).map(g=>g.titleId)); }
 const recentSection = get<HTMLElement>('cloud-recent');
 const recentGrid = get<HTMLElement>('cloud-recent-grid');
@@ -142,13 +236,13 @@ function syncCatalogPager() {
   catalogPager.update(Math.min(catalogVisible,total),total,!dashboard.hidden && activeTab === 'cloud' && playerScreen.hidden && !starting && !loadingCatalog && !catalogSearchPending);
 }
 const catalogNavigation = createCatalogNavigation(cloudSearch, cloudGrid, () => playerScreen.hidden && !starting && !session, () => !dashboard.hidden && activeTab === 'cloud', {
- enabled:()=>!dashboard.hidden && playerScreen.hidden && !starting && !session && !validatingLaunch,
+ enabled:()=>!dashboard.hidden && playerScreen.hidden && !starting && !session && !validatingLaunch && !featuredDialog,
  index:()=>tabs.indexOf(activeTab),switch:index=>switchTab(tabs[index],true),
 }, origin => catalogPager.request(origin));
 document.addEventListener('focusin', event=>{document.querySelectorAll('.gamepad-focus').forEach(el=>{if(el!==event.target)el.classList.remove('gamepad-focus');});});
 const focusObserver=new MutationObserver(()=>{if(!dashboard.hidden && !starting && !session)viewFocus.flush();});
 focusObserver.observe(dashboard,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
-window.addEventListener("pagehide", () => { catalogPager.dispose(); searchController.dispose(); metadataQueue.dispose(); catalogNavigation.dispose(); focusObserver.disconnect(); });
+window.addEventListener("pagehide", () => { toastManager.dispose(); catalogPager.dispose(); searchController.dispose(); metadataQueue.dispose(); catalogNavigation.dispose(); focusObserver.disconnect(); });
 
 function errorText(error: unknown): string { return errorMessage(error); }
 function notice(copy: string | (() => string)): void {
@@ -158,9 +252,10 @@ function notice(copy: string | (() => string)): void {
   const copyNode=document.createElement('span');
   bindText(copyNode,render);
   toast.replaceChildren(copyNode);
-  toast.hidden = false;
+  const expired = microsoftSessionExpired(text);
+  toastManager.show(text, expired ? 6500 : 4000);
   clearTextBinding(diagnostics); diagnostics.textContent = text;
-  if (microsoftSessionExpired(text)) {
+  if (expired) {
     appendMicrosoftReauth(toast, () => {
       // Retain the secure store; the existing OAuth flow replaces it on success.
       setScreen("login");
@@ -217,16 +312,18 @@ function showAuth(status: Status): void {
 function switchTab(tab: Tab, focusView = true): void {
   viewFocus.cancel();
   activeTab = tab;
+  bindText(screenTitle, () => t(screenTitleKeys[tab]));
   catalogNavigation.sync();
-  for (const name of ["consoles", "cloud", "settings"] as const) {
+  for (const name of ["home", "consoles", "cloud", "settings"] as const) {
     get<HTMLElement>(`panel-${name}`).hidden = name !== tab;
     document.querySelector<HTMLButtonElement>(`button[data-action="${name}"]`)?.classList.toggle("active", name === tab);
   }
+  syncFeaturedTimer();
   controllerPresence.sync();
   consolePolling.sync();
-  if (tab === "cloud" && !loadingCatalog && cloudTitles.length === 0) void loadCloud();
+  if ((tab === "cloud" || tab === "home") && !loadingCatalog && cloudTitles.length === 0) void loadCloud();
   syncCatalogPager();
-  if (focusView) viewFocus.begin(get<HTMLElement>(`panel-${tab}`), tab==='cloud'? '#cloud-container .game-card .connect-btn' : tab==='consoles'? '.console-card button' : 'select,input,button');
+  if (focusView) viewFocus.begin(get<HTMLElement>(`panel-${tab}`), tab==='cloud'? '#cloud-container .game-card .connect-btn' : tab==='consoles'? '.console-card button' : tab==='home' ? '.dashboard-action-card' : 'select,input,button');
 }
 
 function cardButton(label: () => string, onClick: () => void, enabled: boolean): HTMLButtonElement {
@@ -241,6 +338,7 @@ function cardButton(label: () => string, onClick: () => void, enabled: boolean):
 function renderConsoles(consoles: ConsoleItem[]): void {
   clearTextBinding(consoleGrid);
   currentConsoles=consoles;
+  bindText(remoteStatus, () => consoles.length ? t('remoteConsolesFound', { count: consoles.length }) : t('noConsoles'));
   renderHomeRecent(consoles);
   if (!consoles.length) { bindText(consoleGrid,()=>t('noConsoles')); return; }
   if (!consoleGrid.querySelector('.console-card')) consoleGrid.replaceChildren();
@@ -256,6 +354,7 @@ function renderConsoles(consoles: ConsoleItem[]): void {
     const badge = document.createElement("span");
     badge.className = "console-badge";
     const rawPower = (item.powerState || "").toLowerCase();
+    card.dataset.power = rawPower;
     bindText(badge,()=>rawPower === "on" || rawPower === "poweredon" ? t('powerOn') : ['standby','connectedstandby'].includes(rawPower) ? t('standby') : rawPower === 'off' ? t('powerOff') : t('powerUnknown'));
     const title = document.createElement("h3"); title.textContent = name;
     const model = consolePresentation(item.consoleType);
@@ -302,7 +401,7 @@ function renderHomeRecent(consoles:ConsoleItem[]){
       if(target===entry.id)void startGame('home',target,title.textContent||entry.title,undefined,item);
     },true));grid.append(card);
   }
-  if(grid.childElementCount)consoleGrid.before(section);
+  if(grid.childElementCount)get<HTMLElement>('panel-home').querySelector('.dashboard-recent')?.before(section);
 }
 const consolePolling = createConsolePolling(async () => {
   // SmartGlass y /v6 son independientes. Si uno falla, mostrar el otro sin bloquear.
@@ -317,7 +416,15 @@ const consolePolling = createConsolePolling(async () => {
   const consoles = smart.status === "fulfilled" ? extractConsoles(smart.value) : [];
   const servers = homeServers ? extractConsoles(homeServers) : [];
   const all = consoles.length ? consoles : servers;
-  renderConsoles(all);
+  const unique = new Map<string, ConsoleItem>();
+  for (const item of all) {
+    const identity = resolveHomeTarget(item, homeServers, all.length) || item.id || item.deviceName || item.name;
+    if (!identity) continue;
+    // Prefer the entry that exposes a playable target; never dedupe by name alone.
+    const previous = unique.get(identity);
+    if (!previous || (!resolveHomeTarget(previous, homeServers, all.length) && resolveHomeTarget(item, homeServers, all.length))) unique.set(identity, item);
+  }
+  renderConsoles([...unique.values()]);
 }, () => !document.hidden && !dashboard.hidden && playerScreen.hidden && activeTab==='consoles');
 window.addEventListener('pagehide',()=>consolePolling.dispose());
 function makeGameCard(game: CloudTitle): HTMLElement {
@@ -327,6 +434,8 @@ function makeGameCard(game: CloudTitle): HTMLElement {
   // léxicamente cuando no hay metadatos hydratados (fallbackLabel). Sin inventar marcas.
   const display = gameDisplayName(game);
   const title = document.createElement("h3"); title.textContent = display;
+  if (game.description) card.dataset.description = game.description;
+  if (game.heroArt) card.dataset.heroArt = game.heroArt;
   const artwork=document.createElement('div');artwork.className='game-artwork';card.append(artwork);
   if (game.boxArt) {
     const image = document.createElement("img"); image.className = "game-cover";
@@ -392,6 +501,7 @@ function makeGameCard(game: CloudTitle): HTMLElement {
 function updateCatalogPagination(_filteredCount: number): void { syncCatalogPager(); }
 function renderCloud(): void {
   renderRecent();
+  renderHomeFeatured();
   if (filterCatalog(libraryTitles(),catalogQuery).length) clearTextBinding(cloudGrid);
   const filtered = filterCatalog(libraryTitles(), catalogQuery);
   if (appendBatch) {
@@ -564,11 +674,15 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
       const value=(n:number|null,digits=1)=>n===null?'—':n.toFixed(digits);
       statsPanel.textContent=`FPS ${value(stats.fps)} · ${value(stats.mbps)} Mbps\nRTT ${value(stats.rttMs)} ms · ${t('packetLoss')} ${value(stats.lossPercent)}%\n${t('decodeTime')} ${value(stats.decodeMs,2)} ms`;
     });
-    let statsRequested=false;
+    let statsRequested=uiPreferences.current.statsOnStart;
     const syncStatsVisibility=()=>telemetry.setVisible(statsRequested&&!document.hidden);
+    if (statsRequested) statsPanel.hidden=false;
+    syncStatsVisibility();
     const toggleTelemetry=()=>{if(!active() || !overlay.hidden)return;statsRequested=!statsRequested;statsPanel.hidden=!statsRequested;syncStatsVisibility();};
     document.addEventListener('visibilitychange',syncStatsVisibility);
-    const menu=mountStreamMenu(playerScreen,{setModal:value=>{controller.gamepad.setModal(value);if(!value)hud.reveal();},toggleTelemetry,disconnect:stopGame,exit:async()=>{await invoke('app_exit');}});
+    const menu=mountStreamMenu(playerScreen,{setModal:value=>{controller.gamepad.setModal(value);if(!value)hud.reveal();},toggleTelemetry,disconnect:stopGame,exit:async()=>{await invoke('app_exit');},
+      screenshot:()=>{const frame=captureVideoFrame(video);if(!frame){notice(()=>t('screenshotFailed'));return;}const link=document.createElement('a');link.href=frame;link.download=`xjaus-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;link.click();notice(()=>t('screenshotSaved'));},
+      vibration:async()=>{const result=await testVibration(()=>[...navigator.getGamepads()]);notice(()=>t(result==='ok'?'vibrationTested':'vibrationUnavailable'));}});
     const toggleMenu=()=>{if(active() && overlay.hidden)menu.toggle();};
     const menuButton=get('stream-menu-button');menuButton.addEventListener('click',toggleMenu);
     const telemetryKey=(event:KeyboardEvent)=>{if(event.key==='F11'&&event.ctrlKey&&!event.repeat){event.preventDefault();toggleTelemetry();}};
@@ -601,7 +715,7 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
     controller.attachVideoElement(video);
     const candidate = new XboxSessionCoordinator(
       controller,
-      (error) => { if (active()) notice(`ICE: ${errorText(error)}`); },
+      (error) => { if (active()) { const message=errorText(error); notice(/streaming keepalive HTTP 401|No se pudo renovar la sesión Xbox/i.test(message) ? 'La sesión Xbox no pudo renovarse. Vuelve a iniciar sesión si el problema persiste.' : `ICE: ${message}`); } },
       ({ state, queue }) => {
         if (!active()) return;
         if (kind === "home") return;
@@ -666,11 +780,14 @@ get<HTMLButtonElement>("manual-login").addEventListener("click", async () => {
   try { showAuth(await invoke<Status>("load_session")); }
   catch (error) { loginFeedback.hidden = false; clearTextBinding(loginFeedback); loginFeedback.textContent = errorText(error); }
 });
-for (const tab of ["consoles", "cloud", "settings"] as const) {
+for (const tab of ["home", "consoles", "cloud", "settings"] as const) {
   document.querySelector<HTMLButtonElement>(`button[data-action="${tab}"]`)?.addEventListener("click", () => {
     switchTab(tab);
     if (tab === "settings") void refreshProfile();
   });
+}
+for (const button of document.querySelectorAll<HTMLButtonElement>('[data-home-action]')) {
+  button.addEventListener('click', () => switchTab(button.dataset.homeAction as Extract<Tab, 'cloud' | 'consoles'>));
 }
 
 get<HTMLButtonElement>('support-us').addEventListener('click',()=>{
@@ -678,9 +795,11 @@ get<HTMLButtonElement>('support-us').addEventListener('click',()=>{
 });
 // --- Perfil Xbox en Ajustes (cuenta opaca + caché por accountScope) ---
 get<HTMLButtonElement>('refresh-consoles')?.addEventListener('click',()=>consolePolling.refresh());
+get<HTMLButtonElement>('refresh-consoles-context').addEventListener('click',()=>consolePolling.refresh());
 const settingsGrid = document.querySelector<HTMLElement>("#panel-settings .settings-grid");
-const profilePanel = settingsGrid
-  ? createProfilePanel(settingsGrid, {
+const profileSlot = document.querySelector<HTMLElement>("#settings-profile-slot");
+const profilePanel = profileSlot
+  ? createProfilePanel(profileSlot, {
       fetchProfile: async () => {
         const generation = catalogGeneration;
         const profile = await invoke<XboxProfile>("xbox_profile");
@@ -712,6 +831,20 @@ function settingsProfileVisible(): boolean {
   return !dashboard.hidden && activeTab === "settings";
 }
 const settingsStore = createSettingsStore(localStorage, command => invoke(command), settings => invoke("save_settings", { settings }));
+// --- Cloud Gaming: métricas reales del catálogo + franja contextual del juego enfocado ---
+const cloudContext = initCloudContext({
+  grid: cloudGrid,
+  meta: get('cloud-meta'),
+  panel: get('cloud-context'),
+  title: get('cloud-context-title'),
+  art: get<HTMLImageElement>('cloud-context-art'),
+  tags: get('cloud-context-tags'),
+  description: get('cloud-context-description'),
+  play: get<HTMLButtonElement>('cloud-context-play'),
+});
+const cloudMetaObserver = new MutationObserver(() => cloudContext.updateMeta());
+cloudMetaObserver.observe(cloudGrid, { childList: true, attributes: true, subtree: true });
+window.addEventListener('pagehide', () => cloudMetaObserver.disconnect(), { once: true });
 const controls = ["resolution", "bitrate", "codec", "audio", "audioGain"] as const;
 for (const key of controls) get<HTMLInputElement>(`stream-${key}`).disabled = true;
 const settingsReady = settingsStore.load().then(settings => {
@@ -732,6 +865,28 @@ for (const key of controls) get<HTMLInputElement>(`stream-${key}`).addEventListe
   updateStreamLabels();
   void settingsStore.save(settings).then(updateSettingsDiagnostics).catch(() => notice(() => t('saveSettingsFailed')));
 });
+// --- Subnavegación de Configuración (mockup: subnav con iconos + panel por sección) ---
+initSettingsNavigation(document);
+// --- Preferencias locales de interfaz (xjaus:ui:v1; nunca tocan el streaming) ---
+const uiControls = { density: get<HTMLSelectElement>('ui-density'), cardTitles: get<HTMLSelectElement>('ui-card-titles'), focusIntensity: get<HTMLSelectElement>('ui-focus-intensity'), statsOnStart: get<HTMLInputElement>('ui-stats-on-start') };
+function hydrateUiControls(prefs: UiPreferences): void {
+  uiControls.density.value = prefs.density;
+  uiControls.cardTitles.value = prefs.cardTitles;
+  uiControls.focusIntensity.value = prefs.focusIntensity;
+  uiControls.statsOnStart.checked = prefs.statsOnStart;
+}
+hydrateUiControls(uiPreferences.current);
+for (const control of Object.values(uiControls)) control.addEventListener('change', () => {
+  applyUiPreferences(uiPreferences.save({
+    density: uiControls.density.value as UiPreferences['density'],
+    cardTitles: uiControls.cardTitles.value as UiPreferences['cardTitles'],
+    focusIntensity: uiControls.focusIntensity.value as UiPreferences['focusIntensity'],
+    statsOnStart: uiControls.statsOnStart.checked,
+  }));
+});
+// --- Acerca de: versión real del paquete + repositorio oficial ---
+get<HTMLElement>('app-version').textContent = appVersion;
+get<HTMLButtonElement>('open-repo').addEventListener('click', () => { void openUrl('https://github.com/perjesus111-hub/xjaus').catch(error => notice(() => t('browserError', { error: errorText(error) }))); });
 function searchInput() { catalogSearchPending=true; catalogPager.reset(); appendBatch=null; metadataQueue.cancelPending(); searchController.input(cloudSearch.value); }
 cloudSearch.addEventListener("input", searchInput);
 cloudSearch.addEventListener("search", searchInput);
@@ -740,6 +895,11 @@ languageControl.value = i18n.preference;
 languageControl.addEventListener('change', () => {
   const value = languageControl.value;
   if (value === 'auto' || value === 'es' || value === 'en') i18n.setPreference(value);
+});
+get<HTMLButtonElement>('copy-diagnostics').addEventListener('click', async () => {
+  const report = sanitizeDiagnostics(get<HTMLElement>('output').textContent ?? '');
+  try { await navigator.clipboard.writeText(report); notice('Informe técnico copiado'); }
+  catch { notice('No se pudo copiar el informe técnico'); }
 });
 get<HTMLButtonElement>("stop-stream").addEventListener("click", () => { void stopGame(); });
 void settingsReady.then(() => invoke<Status>("auth_status")).then(showAuth).catch((error) => notice(() => t('sessionStatus',{error:errorText(error)})));

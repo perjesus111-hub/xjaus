@@ -18,18 +18,22 @@ XJAUS pairs a controller-oriented Electron interface with a Rust sidecar for aut
 - **Automatically hidden stream HUD and cursor**, with an optional telemetry overlay.
 - **Idle-work reduction:** controller navigation avoids continuous animation-frame polling when no gamepad is connected. Console presence polling is scoped to the console view and suspended during streaming. This is not a claim of zero CPU usage.
 - **Session lifecycle handling** with a short network-disruption grace period and local teardown that does not wait indefinitely for a remote shutdown request.
+- **Dynamic Home with a daily featured carousel** built from the real, entitled Cloud Gaming catalog (six art-backed titles per day), automatic rotation and full mouse/keyboard/gamepad navigation. The banner dialog offers Play now (reusing the validated cloud connect flow), add/remove favorite and Cancel; it never starts a stream by itself.
+- **Favorites shared across Home and Cloud Gaming** through one library, synchronized immediately in both directions.
+- **Settings organized in six sections** — General, Streaming, Video & audio, Interface, Diagnostics, About — with a persisted Interface-preferences namespace kept separate from streaming settings, and a Diagnostics section whose "Copy technical report" action redacts credential-like values before the report leaves the machine.
+- **In-game stream menu** reachable with the controller during playback.
 
 ## Screenshots
 
-Captured from the packaged Electron AppImage on Linux. Account details are redacted in the saved images; no mock account or fabricated stream is shown.
+Captured from the packaged Electron AppImage on Linux (XJAUS 1.2.0). Account details are redacted in the saved images; no mock account or fabricated stream is shown.
 
-| Cloud Gaming Dashboard | Console Management |
+| Home carousel | Featured-title dialog |
 | :---: | :---: |
-| ![Dashboard](docs/screenshots/01_dashboard.png) | ![Consoles](docs/screenshots/02_consoles.png) |
-| **Bitrate & Video Settings** | **Live Remote Play with Telemetry** |
-| ![Settings](docs/screenshots/03_settings.png) | ![Stream](docs/screenshots/04_gameplay_stream.png) |
-
-The Remote Play screenshot shows real received video with the HUD hidden and telemetry enabled, but the console displays a controller/profile pairing prompt. It is not a gameplay-control verification. This local run received 2560×1440 video with increasing decoded frames; it does not establish hardware decoder use or guarantee the same performance elsewhere.
+| ![Home](docs/screenshots/01_home_carousel.png) | ![Featured dialog](docs/screenshots/02_featured_modal.png) |
+| **Cloud Gaming catalog** | **Console management** |
+| ![Cloud catalog](docs/screenshots/03_cloud_catalog.png) | ![Consoles](docs/screenshots/04_consoles.png) |
+| **Settings — Streaming** | **Settings — Diagnostics** |
+| ![Settings streaming](docs/screenshots/05_settings_streaming.png) | ![Settings diagnostics](docs/screenshots/06_settings_diagnostico.png) |
 
 ## Packages
 

@@ -1,0 +1,53 @@
+[package]
+name = "xjaus-backend-windows"
+version = "1.2.0"
+description = "Windows cross-build of the XJAUS streaming sidecar used as the Electron backend"
+license = "GPL-3.0-only"
+authors = ["XJAUS contributors"]
+edition = "2024"
+publish = false
+
+# The Electron sidecar reuses the shared streaming modules directly from the
+# main Rust project; the Tauri runtime and its Linux-only dependencies are not
+# part of the Windows backend binary.
+[[bin]]
+name = "xjaus_backend"
+path = "../src-tauri/src/bin/xjaus_backend.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+p256 = { version = "0.13", features = ["ecdsa", "jwk"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2 = "0.10"
+base64 = "0.22"
+url = "2"
+urlencoding = "2"
+keyring = "4.2"
+argon2 = "0.5"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+getrandom = "0.2"
+hex = "0.4"
+regex = "1"
+zeroize = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["time", "sync", "macros"] }
+
+[target.'cfg(windows)'.dependencies]
+# windows_fs.rs is written against the 0.59+ API surface (HANDLE as *mut c_void);
+# keep it on the 0.61 line that already exists in the main project's lockfile.
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Threading",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

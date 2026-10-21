@@ -38,6 +38,8 @@ describe('real settings UI startup',()=>{
   document.querySelector<HTMLElement>('#dashboard')!.hidden=false;
   document.querySelector<HTMLElement>('#panel-consoles')!.hidden=true;
   document.querySelector<HTMLElement>('#panel-settings')!.hidden=false;
+  // Real user flow: audio lives in the "Video y audio" settings sub-section.
+  document.querySelector<HTMLButtonElement>('[data-settings-section="video"]')!.click();
   control('audio').focus();frame(0);pad.buttons[14].pressed=true;frame(16);
   await vi.waitFor(()=>expect(backend.invoke).toHaveBeenLastCalledWith('save_settings',{settings:{resolution:'2560x1440',bitrate:30000,codec:'h264',audio:'opus',audioGain:1}}));
   expect(control('audio').value).toBe('opus');

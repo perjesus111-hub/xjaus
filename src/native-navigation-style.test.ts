@@ -8,7 +8,7 @@ it('home recent UI resolves only a freshly discovered console, never dispatches 
 });
 it('bumper hints are hidden siblings outside intact tabs; exit is glass and reduced motion',()=>{
 
- const nav=html.match(/<nav class="tabs"[\s\S]*?<\/nav>/)![0];expect(nav).not.toContain('shoulder-hint');expect(html).toContain('aria-hidden="true" hidden>LB');expect(html).toContain('aria-hidden="true" hidden>RB');
+ const nav=html.match(/<nav class="[^"]*sidebar-nav[^"]*"[\s\S]*?<\/nav>/)![0];expect(nav).not.toContain('shoulder-hint');expect(html).toContain('aria-hidden="true" hidden>LB');expect(html).toContain('aria-hidden="true" hidden>RB');
  expect(css).toContain('.topbar .tab-navigation { order: 2;');expect(css).toContain('.topbar .tab-navigation .tabs { order: 0;');
  expect(css).toContain('.tab-navigation { display: flex; align-items: center; gap: 12px; }');expect(css).toContain('.shoulder-hint[hidden] { display: none; }');expect(css).toContain('background: rgba(20,22,28,.75)');expect(css).toContain('backdrop-filter: blur(12px)');expect(css).toContain('.player-toolbar { transition: none; }');
 });

@@ -11,10 +11,11 @@ test('IPC rejects subframes, remote pages and arbitrary commands', () => {
   assert.equal(allowedCommand('auth_status'), true);
   assert.equal(allowedCommand('get_token'), false);
 });
-test('external link admits only the exact donation URL in addition to existing device sign-in', () => {
+test('external link admits only exact donation/repository URLs in addition to device sign-in', () => {
   const { externalUrl } = require('./security.cjs');
   assert.equal(externalUrl('https://paypal.me/Comicoon'), true);
-  for(const value of ['https://paypal.me/Comicoon/','https://paypal.me/comicoon','http://paypal.me/Comicoon','https://paypal.me:443/Comicoon','https://paypal.me/Comicoon?amount=1','https://paypal.me/Comicoon#x','https://paypal.me.evil.invalid/Comicoon','https://evil.invalid/?https://paypal.me/Comicoon','https://user@paypal.me/Comicoon',' https://paypal.me/Comicoon',null,{}]) assert.equal(externalUrl(value), false, String(value));
+  assert.equal(externalUrl('https://github.com/perjesus111-hub/xjaus'), true);
+  for(const value of ['https://github.com/perjesus111-hub/xjaus/','https://github.com/perjesus111-hub/xjaus?x=1','https://github.com/perjesus111-hub/other','http://github.com/perjesus111-hub/xjaus','https://github.com.evil.invalid/perjesus111-hub/xjaus','https://user@github.com/perjesus111-hub/xjaus','https://paypal.me/Comicoon/','https://paypal.me/comicoon','http://paypal.me/Comicoon','https://paypal.me:443/Comicoon','https://paypal.me/Comicoon?amount=1','https://paypal.me/Comicoon#x','https://paypal.me.evil.invalid/Comicoon','https://evil.invalid/?https://paypal.me/Comicoon','https://user@paypal.me/Comicoon',' https://paypal.me/Comicoon',null,{}]) assert.equal(externalUrl(value), false, String(value));
   assert.equal(externalUrl('https://microsoft.com/devicelogin'), true);
   assert.equal(externalUrl('https://www.microsoft.com/link?otc=fixture'), true);
 });

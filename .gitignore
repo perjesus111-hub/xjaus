@@ -6,7 +6,9 @@ dist-ssr/
 build/
 release/
 artifacts/
-backend-windows/
+# The backend-windows manifest and Cargo.lock are versioned; only the build
+# output stays local.
+backend-windows/target/
 target/
 
 # Local environments, credentials, sessions and caches

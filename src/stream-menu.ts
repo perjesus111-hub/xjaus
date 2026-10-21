@@ -1,21 +1,31 @@
 import {bindText,t} from './i18n';
 import {focusGamepad} from './ten-foot';
-export function mountStreamMenu(parent:HTMLElement,actions:{setModal:(value:boolean)=>void;toggleTelemetry:()=>void;disconnect:()=>Promise<void>;exit:()=>Promise<void>}) {
+export type StreamMenuActions={setModal:(value:boolean)=>void;toggleTelemetry:()=>void;disconnect:()=>Promise<void>;exit:()=>Promise<void>;screenshot?:()=>void;vibration?:()=>Promise<void>};
+export function mountStreamMenu(parent:HTMLElement,actions:StreamMenuActions) {
  const dialog=document.createElement('dialog');dialog.className='stream-menu';dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','stream-menu-title');
- const heading=document.createElement('h2');heading.id='stream-menu-title';bindText(heading,()=>t('streamMenu'));dialog.append(heading);
- let opened=false,disposed=false,busy=false,previous:HTMLElement|null=null;
+ const head=document.createElement('div');head.className='stream-menu-head';
+ const badge=document.createElement('span');badge.className='stream-menu-badge';badge.setAttribute('aria-hidden','true');badge.textContent='✕';
+ const heading=document.createElement('h2');heading.id='stream-menu-title';bindText(heading,()=>t('streamMenu'));
+ const clock=document.createElement('span');clock.className='stream-menu-clock';
+ head.append(badge,heading,clock);dialog.append(head);
+ let opened=false,disposed=false,busy=false,previous:HTMLElement|null=null,clockTimer:ReturnType<typeof setInterval>|undefined;
+ const tickClock=()=>{clock.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});};
+ const startClock=()=>{tickClock();clockTimer??=setInterval(tickClock,15000);};
+ const stopClock=()=>{if(clockTimer!==undefined){clearInterval(clockTimer);clockTimer=undefined;}};
  const buttons:HTMLButtonElement[]=[];
  const clearPadFocus=()=>{dialog.querySelectorAll('.gamepad-focus').forEach(el=>el.classList.remove('gamepad-focus'));};
- const close=()=>{if(!opened)return;opened=false;clearPadFocus();dialog.close();document.documentElement.classList.remove('stream-menu-open');if(previous?.isConnected)previous.focus();actions.setModal(false);};
+ const close=()=>{if(!opened)return;opened=false;stopClock();clearPadFocus();dialog.close();document.documentElement.classList.remove('stream-menu-open');if(previous?.isConnected)previous.focus();actions.setModal(false);};
  const run=async(action:string)=>{
   if(busy||disposed)return;
   if(action==='resume'){close();return;}
   if(action==='telemetry'){actions.toggleTelemetry();return;}
+  if(action==='screenshot'){actions.screenshot?.();return;}
+  if(action==='vibration'){await actions.vibration?.();return;}
   busy=true;buttons.forEach(b=>b.disabled=true);
   try{await actions.disconnect();if(action==='exit')await actions.exit();}
   finally{busy=false;if(!disposed){buttons.forEach(b=>b.disabled=false);close();}}
  };
- for(const [action,key] of [['resume','resumeStream'],['telemetry','telemetry'],['disconnect','disconnectStream'],['exit','exitApp']] as const){
+ for(const [action,key] of [['resume','resumeStream'],['screenshot','screenshotItem'],['vibration','testVibration'],['telemetry','telemetry'],['disconnect','disconnectStream'],['exit','exitApp']] as const){
   const button=document.createElement('button');button.type='button';button.dataset.action=action;bindText(button,()=>t(key));button.addEventListener('click',()=>{void run(action).catch(()=>{});});buttons.push(button);dialog.append(button);
  }
  const hints=document.createElement('div');hints.className='stream-menu-hints';
@@ -28,7 +38,7 @@ export function mountStreamMenu(parent:HTMLElement,actions:{setModal:(value:bool
  dialog.append(hints);
  parent.append(dialog);
  const states=new Map<number,{pressed:Set<number>;direction?:number;repeatAt:number}>();
- const open=()=>{if(disposed||opened)return;previous=document.activeElement as HTMLElement|null;opened=true;states.clear();actions.setModal(true);document.exitPointerLock?.();document.documentElement.classList.add('stream-menu-open');dialog.showModal();focusGamepad(buttons[0]);};
+ const open=()=>{if(disposed||opened)return;previous=document.activeElement as HTMLElement|null;opened=true;states.clear();actions.setModal(true);document.exitPointerLock?.();document.documentElement.classList.add('stream-menu-open');dialog.showModal();startClock();focusGamepad(buttons[0]);};
  const toggle=()=>opened?close():open();
  const focus=(delta:number)=>{const index=buttons.indexOf(document.activeElement as HTMLButtonElement);focusGamepad(buttons[(Math.max(0,index)+delta+buttons.length)%buttons.length]);};
  // Mouse/keyboard focus inside the dialog supersedes the pad marker.
@@ -78,5 +88,5 @@ export function mountStreamMenu(parent:HTMLElement,actions:{setModal:(value:bool
    old.pressed=pressed;
   }
   for(const index of states.keys())if(!present.has(index))states.delete(index);
- },dispose(){if(disposed)return;close();disposed=true;pointerEvents.forEach(type=>{dialog.removeEventListener(type,contain);window.removeEventListener(type,outside,true);});dialog.removeEventListener('click',backdrop);dialog.removeEventListener('focusin',onDialogFocusIn);dialog.removeEventListener('focusout',onDialogFocusOut);window.removeEventListener('keyup',keyup,true);window.removeEventListener('keydown',keydown,true);dialog.removeEventListener('cancel',cancel);states.clear();dialog.remove();}};
+ },dispose(){if(disposed)return;close();stopClock();disposed=true;pointerEvents.forEach(type=>{dialog.removeEventListener(type,contain);window.removeEventListener(type,outside,true);});dialog.removeEventListener('click',backdrop);dialog.removeEventListener('focusin',onDialogFocusIn);dialog.removeEventListener('focusout',onDialogFocusOut);window.removeEventListener('keyup',keyup,true);window.removeEventListener('keydown',keydown,true);dialog.removeEventListener('cancel',cancel);states.clear();dialog.remove();}};
 }

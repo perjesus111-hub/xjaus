@@ -24,36 +24,104 @@
     </main>
   </section>
   <section id="dashboard" class="screen dashboard" hidden>
-    <header class="topbar">
-      <div class="brand"><span class="eyebrow">XJAUS</span><span id="auth-status" class="status" data-state="off" data-i18n="noSession">Sin sesión</span></div>
-      <div class="tab-navigation">
-        <kbd class="shoulder-hint" aria-hidden="true" hidden>LB</kbd>
-        <nav class="tabs" aria-label="Secciones" data-i18n-aria="sections">
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegación principal" data-i18n-aria="sections">
+        <div class="sidebar-brand" aria-label="XJAUS"><span aria-hidden="true">X</span>JAUS</div>
+        <nav class="tabs sidebar-nav" aria-label="Secciones" data-i18n-aria="sections">
+          <button class="tab" type="button" data-action="home">Inicio</button>
           <button class="tab active" type="button" data-action="consoles" data-i18n="myConsolesTab">Mis Consolas</button>
           <button class="tab" type="button" data-action="cloud">Cloud Gaming</button>
           <button class="tab" type="button" data-action="settings" data-i18n="settings">Configuración</button>
         </nav>
-        <kbd class="shoulder-hint" aria-hidden="true" hidden>RB</kbd>
-      </div>
-      <span id="profile-chip" class="profile-chip" hidden aria-label="Perfil Xbox" data-i18n-aria="profileLabel"></span>
-    </header>
-    <section class="panel" id="panel-consoles"><div class="panel-head"><h2 data-i18n="myConsoles">Mis consolas</h2><button id="refresh-consoles" hidden type="button" aria-keyshortcuts="X" data-i18n="refreshConsoles">Refrescar · X</button></div><div id="consoles-container" class="card-grid"><p class="muted" data-i18n="findingConsoles">Buscando consolas…</p></div></section>
-    <section class="panel" id="panel-cloud" hidden><div class="panel-head"><h2>Cloud Gaming</h2></div><div class="cloud-search-tools"><input id="cloud-search" type="search" placeholder="Buscar juego" aria-label="Buscar juego" data-i18n-aria="searchGame" data-i18n-placeholder="searchGame"><span class="search-shortcuts"><span><kbd class="pad-x">X</kbd> <span data-i18n="search">Buscar</span></span></span></div><section id="cloud-recent" class="cloud-recent" aria-labelledby="cloud-recent-heading" hidden><h3 id="cloud-recent-heading" data-i18n="continuePlaying">Continuar jugando</h3><div id="cloud-recent-grid" class="recent-grid"></div></section><div id="cloud-filters" class="cloud-filters" role="group" aria-label="Filtrar juegos" data-i18n-aria="filterGames"></div><div id="cloud-container" class="card-grid"><p class="muted" data-i18n="openCloudTab">Abre esta pestaña para cargar los juegos.</p></div></section>
+        <p class="sidebar-footer">Tu Xbox.<br>Tus juegos.<br>En Linux.</p>
+      </aside>
+      <main class="app-main">
+        <header class="topbar">
+          <div class="page-context"><span id="auth-status" class="status" data-state="off" data-i18n="noSession">Sin sesión</span></div>
+          <h1 id="screen-title" class="screen-title" data-i18n="myConsolesTab">Mis consolas</h1>
+          <div class="tab-navigation">
+            <kbd class="shoulder-hint" aria-hidden="true" hidden>LB</kbd>
+            <kbd class="shoulder-hint" aria-hidden="true" hidden>RB</kbd>
+          </div>
+          <span id="controller-status" class="controller-pill" hidden data-i18n="controllerConnected">Mando conectado</span>
+          <span id="profile-chip" class="profile-chip" hidden aria-label="Perfil Xbox" data-i18n-aria="profileLabel"></span>
+        </header>
+        <section class="panel dashboard-home" id="panel-home">
+          <div class="dashboard-hero featured-hero" id="featured-hero" aria-live="polite">
+            <div class="featured-controls" aria-label="Navegación de juegos destacados">
+              <button id="featured-prev" class="featured-arrow" type="button" aria-label="Juego destacado anterior">‹</button>
+              <button id="featured-next" class="featured-arrow" type="button" aria-label="Siguiente juego destacado">›</button>
+            </div>
+            <div class="dashboard-hero-copy"><p class="eyebrow">XCLOUD · DESTACADO</p><h1 id="featured-title">Juega tus juegos de Xbox<br>en Linux</h1><p id="featured-meta">Cloud Gaming y Remote Play en una sola aplicación.</p><button id="featured-open" class="featured-open" type="button" disabled>Ver juego</button></div>
+            <div id="featured-indicators" class="featured-indicators" aria-label="Posición del carrusel"></div>
+          </div>
+          <div class="dashboard-actions">
+            <button class="dashboard-action-card" type="button" data-home-action="cloud"><strong>Xbox Cloud Gaming</strong><span>Juega cientos de juegos desde la nube.</span><b aria-hidden="true">›</b></button>
+            <button class="dashboard-action-card" type="button" data-home-action="consoles"><strong>Xbox Remote Play</strong><span>Transmite desde tu consola Xbox.</span><b aria-hidden="true">›</b></button>
+          </div>
+          <section id="home-favorites" class="dashboard-recent" aria-labelledby="home-favorites-title" hidden><h2 id="home-favorites-title">Mis favoritos</h2><div id="home-favorites-grid" class="recent-grid"></div></section>
+          <section class="dashboard-recent" aria-labelledby="dashboard-recent-title"><h2 id="dashboard-recent-title">Juegos recientes</h2><p class="muted">Tu actividad aparecerá aquí después de iniciar un juego.</p></section>
+        </section>
+        <section class="panel" id="panel-consoles" hidden><div class="panel-head"><h2 data-i18n="myConsoles">Mis consolas</h2><button id="refresh-consoles" hidden type="button" aria-keyshortcuts="X" data-i18n="refreshConsoles">Refrescar · X</button></div><p class="panel-intro muted" data-i18n="consolesIntro">Transmite desde tu consola Xbox en tu red local. Refresca para buscar consolas de tu cuenta.</p><div class="remote-body"><div id="consoles-container" class="card-grid"><p class="muted" data-i18n="findingConsoles">Buscando consolas…</p></div><aside class="remote-context"><h3 data-i18n="remoteStatusHeading">Estado de Remote Play</h3><p id="remote-status" class="muted" aria-live="polite" data-i18n="findingConsoles">Buscando consolas…</p><button id="refresh-consoles-context" type="button" data-i18n="refreshConsoles">Refrescar · X</button></aside></div></section>
+    <section class="panel" id="panel-cloud" hidden><div class="panel-head"><h2>Cloud Gaming</h2><span id="cloud-meta" class="cloud-meta" aria-live="polite"></span></div><div class="cloud-search-tools"><input id="cloud-search" type="search" placeholder="Buscar juego" aria-label="Buscar juego" data-i18n-aria="searchGame" data-i18n-placeholder="searchGame"><span class="search-shortcuts"><span><kbd class="pad-x">X</kbd> <span data-i18n="search">Buscar</span></span></span></div><section id="cloud-recent" class="cloud-recent" aria-labelledby="cloud-recent-heading" hidden><h3 id="cloud-recent-heading" data-i18n="continuePlaying">Continuar jugando</h3><div id="cloud-recent-grid" class="recent-grid"></div></section><div id="cloud-filters" class="cloud-filters" role="group" aria-label="Filtrar juegos" data-i18n-aria="filterGames"></div><div class="cloud-body"><div id="cloud-container" class="card-grid"><p class="muted" data-i18n="openCloudTab">Abre esta pestaña para cargar los juegos.</p></div><aside id="cloud-context" class="cloud-context" aria-live="polite" hidden><h3 data-i18n="cloudContextHeading">Juego seleccionado</h3><img id="cloud-context-art" alt="" hidden><strong id="cloud-context-title"></strong><p id="cloud-context-description" class="cloud-context-description" hidden></p><div id="cloud-context-tags" class="cloud-context-tags"></div><button id="cloud-context-play" type="button" data-i18n="play">Jugar</button></aside></div></section>
     <section class="panel" id="panel-settings" hidden>
       <div class="panel-head"><h2 data-i18n="settings">Configuración</h2></div>
-      <div class="settings-grid"><label class="setting" data-i18n="language">Idioma<select id="app-language"><option value="auto" data-i18n="autoLanguage">Automático (sistema)</option><option value="es" lang="es">Español</option><option value="en" lang="en">English</option></select></label>
-        <label class="setting" data-i18n="resolution">Resolución<select id="stream-resolution"><option value="1280x720">720p</option><option value="1920x1080" selected>1080p</option><option value="2560x1440">1440p (QHD)</option></select></label>
-        <label class="setting" data-i18n="bitrate">Bitrate máximo (Mbps)<input id="stream-bitrate" type="range" min="15000" max="45000" step="1000" value="30000"><output id="stream-bitrate-value">30 Mbps</output></label>
-        <label class="setting" data-i18n="codec">Códec preferido<select id="stream-codec"><option value="hevc" data-i18n="hevc">HEVC (si está disponible)</option><option value="h264" data-i18n="h264">H.264 High (si está disponible)</option><option value="auto" selected data-i18n="automatic">Automático</option></select></label>
-        <label class="setting" data-i18n="audio">Audio<select id="stream-audio"><option value="opus" selected data-i18n="stereo">Opus estéreo</option><option value="default" data-i18n="default">Predeterminado</option></select></label>
-        <label class="setting" data-i18n="audioGain">Ganancia de audio<input id="stream-audioGain" type="range" min="1" max="1.5" step="0.05" value="1"><output id="stream-gain-value">1×</output></label>
+      <div class="settings-layout">
+        <nav class="settings-subnav" role="tablist" aria-orientation="vertical" aria-label="Secciones de configuración" data-i18n-aria="settingsSections">
+          <button class="settings-nav-item active" role="tab" type="button" data-settings-section="general" aria-selected="true" aria-controls="settings-panel-general" data-i18n="settingsGeneral">General</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="streaming" aria-selected="false" aria-controls="settings-panel-streaming" tabindex="-1" data-i18n="settingsStreaming">Streaming</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="video" aria-selected="false" aria-controls="settings-panel-video" tabindex="-1" data-i18n="settingsVideo">Video y audio</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="interfaz" aria-selected="false" aria-controls="settings-panel-interfaz" tabindex="-1" data-i18n="settingsInterfaz">Interfaz</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="diagnostico" aria-selected="false" aria-controls="settings-panel-diagnostico" tabindex="-1" data-i18n="settingsDiagnostico">Diagnóstico</button>
+          <button class="settings-nav-item" role="tab" type="button" data-settings-section="acerca" aria-selected="false" aria-controls="settings-panel-acerca" tabindex="-1" data-i18n="settingsAcerca">Acerca de</button>
+        </nav>
+        <div class="settings-sections">
+          <div class="settings-section" role="tabpanel" id="settings-panel-general" data-settings-panel="general">
+            <div id="settings-profile-slot" class="settings-profile-slot"></div>
+            <div class="settings-rows">
+              <div class="setting-row"><label for="app-language" data-i18n="language">Idioma</label><select id="app-language"><option value="auto" data-i18n="autoLanguage">Automático (sistema)</option><option value="es" lang="es">Español</option><option value="en" lang="en">English</option></select></div>
+              <div class="setting-row"><label for="ui-stats-on-start" data-i18n="statsOnStart">Mostrar estadísticas al iniciar transmisión</label><input id="ui-stats-on-start" class="switch" type="checkbox" role="switch"></div>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-streaming" data-settings-panel="streaming" hidden>
+            <div class="settings-grid">
+              <label class="setting" data-i18n="resolution">Resolución<select id="stream-resolution"><option value="1280x720">720p</option><option value="1920x1080" selected>1080p</option><option value="2560x1440">1440p (QHD)</option></select></label>
+              <label class="setting" data-i18n="bitrate">Bitrate máximo (Mbps)<input id="stream-bitrate" type="range" min="15000" max="45000" step="1000" value="30000"><output id="stream-bitrate-value">30 Mbps</output></label>
+              <label class="setting" data-i18n="codec">Códec preferido<select id="stream-codec"><option value="hevc" data-i18n="hevc">HEVC (si está disponible)</option><option value="h264" data-i18n="h264">H.264 High (si está disponible)</option><option value="auto" selected data-i18n="automatic">Automático</option></select></label>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-video" data-settings-panel="video" hidden>
+            <div class="settings-rows">
+              <div class="setting-row"><label for="stream-audio" data-i18n="audio">Audio</label><select id="stream-audio"><option value="opus" selected data-i18n="stereo">Opus estéreo</option><option value="default" data-i18n="default">Predeterminado</option></select></div>
+              <div class="setting-row setting-row-range"><label for="stream-audioGain" data-i18n="audioGain">Ganancia de audio</label><div class="range-control"><input id="stream-audioGain" type="range" min="1" max="1.5" step="0.05" value="1"><output id="stream-gain-value">1×</output></div></div>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-interfaz" data-settings-panel="interfaz" hidden>
+            <div class="settings-rows">
+              <div class="setting-row"><label for="ui-density" data-i18n="uiDensity">Densidad del catálogo</label><select id="ui-density"><option value="comfortable" selected data-i18n="densityComfortable">Cómoda</option><option value="compact" data-i18n="densityCompact">Compacta</option></select></div>
+              <div class="setting-row"><label for="ui-card-titles" data-i18n="uiCardTitles">Títulos de portadas</label><select id="ui-card-titles"><option value="visible" selected data-i18n="titlesVisible">Siempre visibles</option><option value="focus" data-i18n="titlesFocus">Al enfocar</option></select></div>
+              <div class="setting-row"><label for="ui-focus-intensity" data-i18n="uiFocusIntensity">Intensidad del foco</label><select id="ui-focus-intensity"><option value="subtle" data-i18n="focusSubtle">Suave</option><option value="normal" selected data-i18n="focusNormal">Normal</option><option value="strong" data-i18n="focusStrong">Fuerte</option></select></div>
+            </div>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-diagnostico" data-settings-panel="diagnostico" hidden>
+            <div class="diagnostics"><h3 data-i18n="technicalDiagnostics">Diagnóstico técnico</h3><pre id="output" aria-live="polite" data-i18n="ready">Listo.</pre><button id="copy-diagnostics" type="button" data-i18n="copyReport">Copiar informe técnico</button></div>
+            <section class="support-card" aria-labelledby="support-us">
+              <button id="support-us" type="button" aria-describedby="support-desc" data-i18n="support_us">Apóyanos</button>
+              <p id="support-desc" class="muted" data-i18n="support_desc">Apoya el desarrollo continuo de XJAUS</p>
+            </section>
+          </div>
+          <div class="settings-section" role="tabpanel" id="settings-panel-acerca" data-settings-panel="acerca" hidden>
+            <div class="settings-rows about-rows">
+              <div class="setting-row"><span data-i18n="aboutVersion">Versión</span><output id="app-version"></output></div>
+              <div class="setting-row"><span data-i18n="aboutRepo">Repositorio</span><button id="open-repo" type="button" class="link-btn">github.com/perjesus111-hub/xjaus</button></div>
+            </div>
+            <p class="muted about-license" data-i18n="aboutLicense">XJAUS es software libre bajo la GNU General Public License v3.</p>
+          </div>
+        </div>
       </div>
-      <details class="diagnostics"><summary data-i18n="technicalDiagnostics">Diagnóstico técnico</summary><pre id="output" aria-live="polite" data-i18n="ready">Listo.</pre></details>
-      <section class="support-card" aria-labelledby="support-us">
-        <button id="support-us" type="button" aria-describedby="support-desc" data-i18n="support_us">Apóyanos</button>
-        <p id="support-desc" class="muted" data-i18n="support_desc">Apoya el desarrollo continuo de XJAUS</p>
-      </section>
     </section>
+    </main>
+    </div>
   </section>
   <section id="player-screen" class="player-screen" hidden>
     <video id="stream-video" autoplay="" playsinline="" aria-label="Video de Xbox" data-i18n-aria="xboxVideo"></video>
