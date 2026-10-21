@@ -6,5 +6,6 @@ export function sanitizeDiagnostics(value: string): string {
     .replace(new RegExp(`("${sensitive}"\\s*:\\s*")[^"]*"`, 'gi'), '$1[redacted]"')
     .replace(new RegExp(`(${sensitive}\\s*[:=]\\s*)([^\\s,;]+)`, 'gi'), '$1[redacted]')
     .replace(/([?&](?:code|token|access_token|refresh_token|lpt|gsToken)=)[^&#\s]+/gi, '$1[redacted]')
-    .replace(/(Bearer\s+)[^\s]+/gi, '$1[redacted]');
+    .replace(/(Bearer\s+)[^\s]+/gi, '$1[redacted]')
+    .replace(/(xbl3\.0\s+)[^\s]+/gi, '$1[redacted]');
 }

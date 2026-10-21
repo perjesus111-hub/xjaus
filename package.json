@@ -7,7 +7,7 @@
   },
   "main": "electron/main.cjs",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -115,7 +115,9 @@
         }
       ],
       "syncDesktopName": true,
-      "executableArgs": ["--class=io.github.xjaus.xjaus"],
+      "executableArgs": [
+        "--class=io.github.xjaus.xjaus"
+      ],
       "desktop": {
         "entry": {
           "Name": "XJAUS",

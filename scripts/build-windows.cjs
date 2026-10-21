@@ -1,11 +1,18 @@
 const {spawnSync}=require('node:child_process');
-const fs=require('node:fs');const path=require('node:path');
+const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
 const root=path.resolve(__dirname,'..');
-const result=spawnSync('cargo',['build','--locked','--manifest-path','backend-windows/Cargo.toml','--bin','xjaus_backend','--target','x86_64-pc-windows-gnu','--release','-j','8'],{cwd:root,stdio:'inherit',env:{...process.env,CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER:process.env.CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER||'x86_64-w64-mingw32-gcc'}});
+// Rust panic messages embed the absolute build-time path; remap the maintainer's
+// home directory out of the published Windows binary.
+const remapFlags=['--remap-path-prefix='+os.homedir()+'=/build'];
+if(process.env.RUSTFLAGS)remapFlags.unshift(process.env.RUSTFLAGS);
+const result=spawnSync('cargo',['build','--locked','--manifest-path','backend-windows/Cargo.toml','--bin','xjaus_backend','--target','x86_64-pc-windows-gnu','--release','-j','8'],{cwd:root,stdio:'inherit',env:{...process.env,RUSTFLAGS:remapFlags.join(' '),CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER:process.env.CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER||'x86_64-w64-mingw32-gcc'}});
 if(result.error)throw result.error;if(result.status!==0)process.exit(result.status||1);
 const source=path.join(root,'backend-windows/target/x86_64-pc-windows-gnu/release/xjaus_backend.exe');
 const bytes=fs.readFileSync(source);const pe=bytes.readUInt32LE(0x3c);
 if(bytes.toString('ascii',0,2)!=='MZ'||bytes.toString('ascii',pe,pe+4)!=='PE\0\0'||bytes.readUInt16LE(pe+4)!==0x8664)throw Error('Backend is not a Windows x64 PE');
+// The Xbox endpoint path list contains a literal "/home" fragment ("/v6/servers",
+// "/home", "/v2/titles"), so assert the maintainer's home prefix, not "/home/".
+if(bytes.includes(Buffer.from(path.join(os.homedir(),''))))throw Error('Windows sidecar leaks a build-time home path');
 const dest=path.join(root,'build/windows/bin');fs.mkdirSync(dest,{recursive:true});
 fs.copyFileSync(source,path.join(dest,'xjaus_backend.exe'));
 // GNU runtime DLLs, when required, are explicit resources; never copy a host directory.
