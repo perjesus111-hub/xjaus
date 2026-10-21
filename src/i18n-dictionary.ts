@@ -158,7 +158,7 @@ export const es = {
   "aboutRepo": "Repositorio",
   "aboutLicense": "XJAUS es software libre bajo la GNU General Public License v3.",
 
-  "cloudMeta": "{count} juegos · {favorites} favoritos",
+  "cloudMeta": "{count} juegos cargados · {favorites} favoritos",
   "cloudContextHeading": "Juego seleccionado",
   "favoriteOn": "Favorito",
   "screenshotItem": "Captura de pantalla",
@@ -198,7 +198,7 @@ export const en: Record<MessageKey,string> = {
   'aboutVersion': 'Version',
   'aboutRepo': 'Repository',
   'aboutLicense': 'XJAUS is free software under the GNU General Public License v3.',
-  'cloudMeta': '{count} games · {favorites} favorites',
+  'cloudMeta': '{count} games loaded · {favorites} favorites',
   'cloudContextHeading': 'Selected game',
   'favoriteOn': 'Favorite',
   'screenshotItem': 'Screenshot',
