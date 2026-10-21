@@ -11,10 +11,11 @@ function mount(): void {
 
 beforeEach(() => { mount(); i18n.setPreference('es'); });
 
-function card(titleId: string, title: string, opts: { art?: string; favorite?: boolean; multiplayer?: boolean; controller?: boolean } = {}): HTMLElement {
+function card(titleId: string, title: string, opts: { art?: string; description?: string; favorite?: boolean; multiplayer?: boolean; controller?: boolean } = {}): HTMLElement {
   const el = document.createElement('article');
   el.className = 'game-card';
   el.dataset.titleId = titleId;
+  if (opts.description) el.dataset.description = opts.description;
   el.innerHTML = `<h3>${title}</h3><div class="game-artwork">${opts.art ? `<img class="game-cover" src="${opts.art}" alt="">` : ''}${opts.multiplayer ? '<span class="multiplayer-badge">Multijugador</span>' : ''}${opts.controller ? '<span class="controller-support">🎮</span>' : ''}</div><button class="favorite-toggle" aria-pressed="${String(!!opts.favorite)}">☆</button><button class="connect-btn">Jugar</button>`;
   return el;
 }
@@ -32,6 +33,7 @@ describe('cloud catalog context', () => {
       title: document.querySelector<HTMLElement>('#cloud-context-title')!,
       art: document.querySelector<HTMLImageElement>('#cloud-context-art')!,
       tags: document.querySelector<HTMLElement>('#cloud-context-tags')!,
+      description: document.querySelector<HTMLElement>('#cloud-context-description')!,
       play: document.querySelector<HTMLButtonElement>('#cloud-context-play')!,
     });
     ctx.updateMeta();
@@ -43,7 +45,7 @@ describe('cloud catalog context', () => {
 
   it('shows only real card data for the focused game and hides without focus', () => {
     const grid = document.querySelector<HTMLElement>('#cloud-container')!;
-    grid.replaceChildren(card('a', 'Alpha Prime', { art: 'https://images.test/box.png', favorite: true, multiplayer: true, controller: true }));
+    grid.replaceChildren(card('a', 'Alpha Prime', { art: 'https://images.test/box.png', description: 'Official product description.', favorite: true, multiplayer: true, controller: true }));
     initCloudContext({
       grid,
       meta: document.querySelector<HTMLElement>('#cloud-meta')!,
@@ -51,6 +53,7 @@ describe('cloud catalog context', () => {
       title: document.querySelector<HTMLElement>('#cloud-context-title')!,
       art: document.querySelector<HTMLImageElement>('#cloud-context-art')!,
       tags: document.querySelector<HTMLElement>('#cloud-context-tags')!,
+      description: document.querySelector<HTMLElement>('#cloud-context-description')!,
       play: document.querySelector<HTMLButtonElement>('#cloud-context-play')!,
     });
     expect(document.querySelector<HTMLElement>('#cloud-context')!.hidden).toBe(true);
@@ -59,6 +62,8 @@ describe('cloud catalog context', () => {
     expect(panel.hidden).toBe(false);
     expect(document.querySelector<HTMLElement>('#cloud-context-title')!.textContent).toBe('Alpha Prime');
     expect(document.querySelector<HTMLImageElement>('#cloud-context-art')!.src).toBe('https://images.test/box.png');
+    expect(document.querySelector<HTMLElement>('#cloud-context-description')!.textContent).toBe('Official product description.');
+    expect(document.querySelector<HTMLElement>('#cloud-context-description')!.hidden).toBe(false);
     const tags = document.querySelector<HTMLElement>('#cloud-context-tags')!;
     expect(tags.textContent).toContain('Multijugador');
     expect(tags.textContent).toContain(' Compatible con mando');
@@ -81,6 +86,7 @@ describe('cloud catalog context', () => {
       title: document.querySelector<HTMLElement>('#cloud-context-title')!,
       art: document.querySelector<HTMLImageElement>('#cloud-context-art')!,
       tags: document.querySelector<HTMLElement>('#cloud-context-tags')!,
+      description: document.querySelector<HTMLElement>('#cloud-context-description')!,
       play: document.querySelector<HTMLButtonElement>('#cloud-context-play')!,
     });
     grid.querySelector<HTMLButtonElement>('.connect-btn')!.focus();

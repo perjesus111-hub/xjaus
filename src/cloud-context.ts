@@ -10,6 +10,7 @@ export type CloudContextDeps = {
   title: HTMLElement;
   art: HTMLImageElement;
   tags: HTMLElement;
+  description: HTMLElement;
   play: HTMLButtonElement;
 };
 
@@ -32,6 +33,9 @@ export function initCloudContext(deps: CloudContextDeps): { updateMeta: () => vo
     if (image?.src) { deps.art.src = image.src; deps.art.hidden = false; }
     else { deps.art.removeAttribute('src'); deps.art.hidden = true; }
     deps.tags.replaceChildren();
+    const description = card.getAttribute('data-description');
+    deps.description.textContent = description ?? '';
+    deps.description.hidden = !description;
     if (card.querySelector('.multiplayer-badge')) {
       const badge = document.createElement('span');
       badge.className = 'context-tag';

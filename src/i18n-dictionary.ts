@@ -168,6 +168,8 @@ export const es = {
   "screenshotSaved": "Captura descargada",
   "screenshotFailed": "No se pudo capturar el video",
   "consolesIntro": "Transmite desde tu consola Xbox en tu red local. Refresca para buscar consolas de tu cuenta.",
+  "remoteStatusHeading": "Estado de Remote Play",
+  "remoteConsolesFound": "{count} consola(s) disponible(s) en tu cuenta",
   "homeTab": "Inicio",
   "cloudTab": "Cloud Gaming",
   "controllerConnected": "Mando conectado"
@@ -208,6 +210,8 @@ export const en: Record<MessageKey,string> = {
   'screenshotSaved': 'Screenshot downloaded',
   'screenshotFailed': 'Could not capture the video',
   'consolesIntro': 'Stream from your Xbox console over your local network. Refresh to look for consoles on your account.',
+  'remoteStatusHeading': 'Remote Play status',
+  'remoteConsolesFound': '{count} console(s) available on your account',
   'homeTab': 'Home',
   'cloudTab': 'Cloud Gaming',
   'controllerConnected': 'Controller connected',

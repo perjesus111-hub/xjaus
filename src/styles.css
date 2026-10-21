@@ -750,6 +750,7 @@ html[data-focus-intensity='strong'] button:focus-visible, html[data-focus-intens
 .cloud-context h3 { margin: 0; color: var(--text-dim); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .cloud-context img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; background: #101113; }
 .cloud-context strong { color: var(--text-primary); font-size: 1.02rem; line-height: 1.3; }
+.cloud-context-description { margin: 0; color: var(--text-dim); font-size: .82rem; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .cloud-context-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .context-tag { padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: 999px; color: var(--text-dim); font-size: .74rem; }
 .context-tag-favorite { color: var(--gold-bright); border-color: var(--gold-muted); }
@@ -758,6 +759,13 @@ html[data-focus-intensity='strong'] button:focus-visible, html[data-focus-intens
 @media (max-width: 900px) { .cloud-body { grid-template-columns: 1fr; } .cloud-context { position: static; } }
 /* --- Remote Play: composición fiel al mockup --- */
 .panel-intro { margin: 0 0 14px; max-width: 68ch; font-size: .9rem; }
+.remote-body { display: grid; grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 300px); gap: 16px; align-items: start; }
+.remote-context { position: sticky; top: 8px; padding: 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg, 12px); background: linear-gradient(160deg, rgba(213,172,72,.10), var(--bg-surface, #151619) 45%); }
+.remote-context h3 { margin: 0 0 10px; color: var(--text-primary); font-size: 1rem; }
+.remote-context p { min-height: 3em; margin: 0 0 16px; line-height: 1.45; }
+.remote-context button { width: 100%; padding: 12px; border: 1px solid var(--gold-muted); border-radius: 8px; color: var(--gold-bright); background: rgba(213,172,72,.08); font-weight: 650; cursor: pointer; }
+.remote-context button:hover, .remote-context button:focus-visible { background: rgba(213,172,72,.16); border-color: var(--gold-bright); }
+@media (max-width: 900px) { .remote-body { grid-template-columns: 1fr; } .remote-context { position: static; } }
 .console-card .console-badge::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--text-faint); }
 .console-card[data-power='on'] .console-badge::before, .console-card[data-power='poweredon'] .console-badge::before { background: var(--ok); box-shadow: 0 0 6px rgba(158,227,125,.7); }
 .console-card[data-power='standby'] .console-badge::before, .console-card[data-power='connectedstandby'] .console-badge::before { background: var(--gold); box-shadow: 0 0 6px rgba(212,175,55,.7); }
@@ -772,7 +780,7 @@ html[data-focus-intensity='strong'] button:focus-visible, html[data-focus-intens
 .controller-pill::before { content: '🎮'; margin-right: 6px; font-size: .8rem; }
 /* --- Foco de mando vs sección seleccionada: cursor dorado brillante --- */
 .gamepad-focus:focus { outline: 3px solid var(--gold-bright, #e8c56a); outline-offset: 4px; box-shadow: 0 0 0 2px #0a0a0a, 0 0 16px rgba(212,175,55,.30); }
-.stream-menu { left: 50%; right: auto; top: 50%; width: min(390px, calc(100vw - 48px)); min-width: 0; padding: 0; border-color: rgba(232,197,106,.55); border-radius: 14px; background: rgba(13,14,16,.94); transform: translate(-50%, -50%); box-shadow: 0 20px 70px rgba(0,0,0,.62); overflow: hidden; }
+.stream-menu { right: clamp(24px, 5vw, 84px); left: auto; top: 50%; width: min(390px, calc(100vw - 48px)); min-width: 0; padding: 0; border-color: rgba(232,197,106,.55); border-radius: 14px; background: rgba(13,14,16,.94); transform: translateY(-50%); box-shadow: 0 20px 70px rgba(0,0,0,.62); overflow: hidden; }
 .stream-menu-head { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--border-subtle); background: rgba(212,175,55,.05); }
 .stream-menu-badge { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #3a3a3d, #141416); color: var(--text-primary); font-size: .8rem; font-weight: 700; }
 .stream-menu-head h2 { flex: 1; display: block; margin: 0; color: var(--text-primary); font-size: 1rem; }

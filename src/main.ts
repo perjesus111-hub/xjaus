@@ -68,6 +68,7 @@ const loginFeedback = get<HTMLElement>("login-feedback");
 const diagnostics = get<HTMLElement>("output");
 const toast = get<HTMLElement>("toast");
 const consoleGrid = get<HTMLElement>("consoles-container");
+const remoteStatus = get<HTMLElement>('remote-status');
 const cloudGrid = get<HTMLElement>("cloud-container");
 const video = get<HTMLVideoElement>("stream-video");
 const overlay = get<HTMLElement>("stream-overlay");
@@ -257,6 +258,7 @@ function cardButton(label: () => string, onClick: () => void, enabled: boolean):
 function renderConsoles(consoles: ConsoleItem[]): void {
   clearTextBinding(consoleGrid);
   currentConsoles=consoles;
+  bindText(remoteStatus, () => consoles.length ? t('remoteConsolesFound', { count: consoles.length }) : t('noConsoles'));
   renderHomeRecent(consoles);
   if (!consoles.length) { bindText(consoleGrid,()=>t('noConsoles')); return; }
   if (!consoleGrid.querySelector('.console-card')) consoleGrid.replaceChildren();
@@ -344,6 +346,8 @@ function makeGameCard(game: CloudTitle): HTMLElement {
   // léxicamente cuando no hay metadatos hydratados (fallbackLabel). Sin inventar marcas.
   const display = gameDisplayName(game);
   const title = document.createElement("h3"); title.textContent = display;
+  if (game.description) card.dataset.description = game.description;
+  if (game.heroArt) card.dataset.heroArt = game.heroArt;
   const artwork=document.createElement('div');artwork.className='game-artwork';card.append(artwork);
   if (game.boxArt) {
     const image = document.createElement("img"); image.className = "game-cover";
@@ -702,6 +706,7 @@ get<HTMLButtonElement>('support-us').addEventListener('click',()=>{
 });
 // --- Perfil Xbox en Ajustes (cuenta opaca + caché por accountScope) ---
 get<HTMLButtonElement>('refresh-consoles')?.addEventListener('click',()=>consolePolling.refresh());
+get<HTMLButtonElement>('refresh-consoles-context').addEventListener('click',()=>consolePolling.refresh());
 const settingsGrid = document.querySelector<HTMLElement>("#panel-settings .settings-grid");
 const profileSlot = document.querySelector<HTMLElement>("#settings-profile-slot");
 const profilePanel = profileSlot
@@ -745,6 +750,7 @@ const cloudContext = initCloudContext({
   title: get('cloud-context-title'),
   art: get<HTMLImageElement>('cloud-context-art'),
   tags: get('cloud-context-tags'),
+  description: get('cloud-context-description'),
   play: get<HTMLButtonElement>('cloud-context-play'),
 });
 const cloudMetaObserver = new MutationObserver(() => cloudContext.updateMeta());
