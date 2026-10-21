@@ -34,6 +34,7 @@ import { initSettingsNavigation } from "./settings-nav";
 import { initCloudContext } from "./cloud-context";
 import { testVibration } from "./haptics-test";
 import { captureVideoFrame } from "./video-frame";
+import { featuredForDay } from './featured-games';
 import { createToastManager } from './toast-manager';
 import { version as appVersion } from "../package.json";
 import { microsoftSessionExpired, appendMicrosoftReauth } from "./stream-auth";
@@ -100,6 +101,58 @@ let libraryFilter: LibraryFilter = 'all';
 const viewFocus = new ViewFocusIntent();
 const tabs: Tab[] = ['consoles','cloud','settings'];
 const library = () => new CloudLibrary(localStorage,catalogScope);
+const featuredHero = get<HTMLElement>('featured-hero');
+const featuredTitle = get<HTMLElement>('featured-title');
+const featuredMeta = get<HTMLElement>('featured-meta');
+const featuredOpen = get<HTMLButtonElement>('featured-open');
+const featuredIndicators = get<HTMLElement>('featured-indicators');
+const homeFavorites = get<HTMLElement>('home-favorites');
+const homeFavoritesGrid = get<HTMLElement>('home-favorites-grid');
+let featuredGames: CloudTitle[] = [];
+let featuredIndex = 0;
+let featuredTimer: ReturnType<typeof setInterval> | undefined;
+let featuredPaused = false;
+function dayKey() { return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
+function renderHomeFeatured() {
+  featuredGames = featuredForDay(cloudTitles, dayKey());
+  if (!featuredGames.length) { featuredOpen.disabled=true; return; }
+  featuredIndex %= featuredGames.length;
+  const game=featuredGames[featuredIndex]!;
+  featuredTitle.textContent=gameDisplayName(game);
+  featuredMeta.textContent=game.description || (game.features?.multiplayer ? t('multiplayer') : 'Disponible en Xbox Cloud Gaming');
+  featuredHero.style.backgroundImage=`linear-gradient(90deg, rgba(5,7,9,.94) 0%, rgba(5,7,9,.64) 42%, rgba(5,7,9,.12) 78%), url("${game.heroArt || game.boxArt}")`;
+  featuredOpen.disabled=false; featuredOpen.dataset.titleId=game.titleId;
+  featuredIndicators.replaceChildren(...featuredGames.map((_item,index)=>{const b=document.createElement('button');b.type='button';b.className='featured-indicator';b.setAttribute('aria-label',`${index+1}/${featuredGames.length}`);b.setAttribute('aria-current',String(index===featuredIndex));b.addEventListener('click',()=>{featuredIndex=index;renderHomeFeatured();});return b;}));
+  const favorites=cloudTitles.filter(game=>library().favorites().includes(game.titleId));
+  homeFavorites.hidden=!favorites.length; homeFavoritesGrid.replaceChildren(...favorites.map(makeGameCard));
+}
+function rotateFeatured(delta=1){if(!featuredGames.length)return;featuredIndex=(featuredIndex+delta+featuredGames.length)%featuredGames.length;renderHomeFeatured();}
+function syncFeaturedTimer(){if(featuredTimer!==undefined){clearInterval(featuredTimer);featuredTimer=undefined;}if(!featuredPaused && !document.hidden && activeTab==='home' && !featuredHero.closest('[hidden]') && !matchMedia('(prefers-reduced-motion: reduce)').matches)featuredTimer=setInterval(()=>rotateFeatured(),10000);}
+featuredHero.addEventListener('focusin',()=>{featuredPaused=true;syncFeaturedTimer();});
+featuredHero.addEventListener('focusout',()=>{featuredPaused=false;syncFeaturedTimer();});
+get<HTMLButtonElement>('featured-prev').addEventListener('click',()=>rotateFeatured(-1));
+get<HTMLButtonElement>('featured-next').addEventListener('click',()=>rotateFeatured(1));
+featuredHero.addEventListener('keydown',event=>{if(event.key==='ArrowLeft'){event.preventDefault();rotateFeatured(-1);}if(event.key==='ArrowRight'){event.preventDefault();rotateFeatured(1);}});
+let featuredDialog: HTMLDialogElement | undefined;
+function openFeaturedDialog(game: CloudTitle): void {
+  featuredPaused=true; syncFeaturedTimer();
+  const origin=document.activeElement as HTMLElement | null;
+  featuredDialog?.remove();
+  const dialog=document.createElement('dialog'); dialog.className='featured-dialog'; dialog.setAttribute('aria-modal','true');
+  const title=document.createElement('h2'); title.id='featured-dialog-title'; title.textContent=gameDisplayName(game); dialog.setAttribute('aria-labelledby',title.id);
+  const art=document.createElement('img'); art.alt=''; art.src=game.boxArt || game.heroArt || ''; art.hidden=!art.src;
+  const actions=document.createElement('div'); actions.className='featured-dialog-actions';
+  const play=document.createElement('button'); play.type='button'; play.className='featured-dialog-play'; play.textContent='Jugar ahora';
+  const favorite=document.createElement('button'); favorite.type='button';
+  const refreshFavorite=()=>{const saved=library().favorites().includes(game.titleId);favorite.textContent=saved?'Quitar de favoritos':'Añadir a favoritos';};refreshFavorite();
+  const cancel=document.createElement('button'); cancel.type='button'; cancel.textContent='Cancelar';
+  const close=()=>{featuredDialog=undefined;dialog.close();dialog.remove();featuredPaused=false;syncFeaturedTimer();origin?.focus();};
+  cancel.addEventListener('click',close); dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
+  favorite.addEventListener('click',()=>{library().toggle(game);refreshFavorite();renderCloud();renderHomeFeatured();});
+  play.addEventListener('click',()=>{close();libraryFilter='all';catalogQuery='';cloudSearch.value='';appendBatch=null;switchTab('cloud');renderCloud();const card=document.querySelector<HTMLElement>(`#cloud-container [data-title-id="${CSS.escape(game.titleId)}"]`);card?.querySelector<HTMLButtonElement>('.connect-btn')?.click();});
+  actions.append(play,favorite,cancel); dialog.append(art,title,actions); document.body.append(dialog); featuredDialog=dialog; dialog.showModal();play.focus();
+}
+featuredOpen.addEventListener('click',()=>{const game=featuredGames.find(item=>item.titleId===featuredOpen.dataset.titleId);if(game)openFeaturedDialog(game);});
 function libraryTitles() { return filterLibrary(cloudTitles,libraryFilter,library().favorites(),library().recent(cloudTitles).map(g=>g.titleId)); }
 const recentSection = get<HTMLElement>('cloud-recent');
 const recentGrid = get<HTMLElement>('cloud-recent-grid');
@@ -242,6 +295,7 @@ function switchTab(tab: Tab, focusView = true): void {
     get<HTMLElement>(`panel-${name}`).hidden = name !== tab;
     document.querySelector<HTMLButtonElement>(`button[data-action="${name}"]`)?.classList.toggle("active", name === tab);
   }
+  syncFeaturedTimer();
   controllerPresence.sync();
   consolePolling.sync();
   if (tab === "cloud" && !loadingCatalog && cloudTitles.length === 0) void loadCloud();
@@ -424,6 +478,7 @@ function makeGameCard(game: CloudTitle): HTMLElement {
 function updateCatalogPagination(_filteredCount: number): void { syncCatalogPager(); }
 function renderCloud(): void {
   renderRecent();
+  renderHomeFeatured();
   if (filterCatalog(libraryTitles(),catalogQuery).length) clearTextBinding(cloudGrid);
   const filtered = filterCatalog(libraryTitles(), catalogQuery);
   if (appendBatch) {
