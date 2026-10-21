@@ -7,7 +7,11 @@ it('owns modal input, focus trap, pad navigation, resume and clean exit sequenci
  const menu=mountStreamMenu(document.querySelector('#player')!,{setModal,toggleTelemetry:toggle,disconnect,exit});
  menu.toggle();expect(menu.open).toBe(true);expect(setModal).toHaveBeenLastCalledWith(true);const dialog=document.querySelector('dialog')!;expect(dialog.getAttribute('aria-modal')).toBe('true');
  const pad={index:0,buttons:Array.from({length:17},()=>({pressed:false,value:0})),axes:[0,0,0,0]} as unknown as Gamepad;
- menu.poll([pad],0);(pad.buttons as GamepadButton[])[13]={pressed:true,value:1} as GamepadButton;menu.poll([pad],10);expect((document.activeElement as HTMLElement).dataset.action).toBe('telemetry');
+ menu.poll([pad],0);(pad.buttons as GamepadButton[])[13]={pressed:true,value:1} as GamepadButton;menu.poll([pad],10);expect((document.activeElement as HTMLElement).dataset.action).toBe('screenshot');
+ (pad.buttons as GamepadButton[])[13]={pressed:false,value:0} as GamepadButton;menu.poll([pad],12);
+ (pad.buttons as GamepadButton[])[13]={pressed:true,value:1} as GamepadButton;menu.poll([pad],14);expect((document.activeElement as HTMLElement).dataset.action).toBe('vibration');
+ (pad.buttons as GamepadButton[])[13]={pressed:false,value:0} as GamepadButton;menu.poll([pad],16);
+ (pad.buttons as GamepadButton[])[13]={pressed:true,value:1} as GamepadButton;menu.poll([pad],18);expect((document.activeElement as HTMLElement).dataset.action).toBe('telemetry');
  (pad.buttons as GamepadButton[])[0]={pressed:true,value:1} as GamepadButton;menu.poll([pad],20);expect(toggle).toHaveBeenCalledOnce();menu.poll([pad],30);expect(toggle).toHaveBeenCalledOnce();
  dialog.querySelector<HTMLButtonElement>('[data-action="exit"]')!.click();await vi.waitFor(()=>expect(exit).toHaveBeenCalledOnce());expect(disconnect).toHaveBeenCalledOnce();expect(disconnect.mock.invocationCallOrder[0]).toBeLessThan(exit.mock.invocationCallOrder[0]);
  menu.dispose();expect(document.querySelector('dialog')).toBeNull();expect(setModal).toHaveBeenLastCalledWith(false);
@@ -24,10 +28,21 @@ it('marks gamepad focus visually while navigating the menu with the pad',()=>{
  menu.poll([pad],0);
  (pad.buttons as GamepadButton[])[13]={pressed:true,value:1} as GamepadButton;
  menu.poll([pad],10);
+ const screenshot=document.querySelector<HTMLButtonElement>('[data-action="screenshot"]')!;
+ expect(document.activeElement).toBe(screenshot);
+ expect(screenshot.classList.contains('gamepad-focus')).toBe(true);
+ expect(document.querySelector('[data-action="resume"]')!.classList.contains('gamepad-focus')).toBe(false);
+ (pad.buttons as GamepadButton[])[13]={pressed:false,value:0} as GamepadButton;
+ menu.poll([pad],20);
+ (pad.buttons as GamepadButton[])[13]={pressed:true,value:1} as GamepadButton;
+ menu.poll([pad],30);
+ (pad.buttons as GamepadButton[])[13]={pressed:false,value:0} as GamepadButton;
+ menu.poll([pad],40);
+ (pad.buttons as GamepadButton[])[13]={pressed:true,value:1} as GamepadButton;
+ menu.poll([pad],50);
  const telemetry=document.querySelector<HTMLButtonElement>('[data-action="telemetry"]')!;
  expect(document.activeElement).toBe(telemetry);
  expect(telemetry.classList.contains('gamepad-focus')).toBe(true);
- expect(first.classList.contains('gamepad-focus')).toBe(false);
  // Left stick (axis 1 down) moves focus too and keeps the marker on the target.
  (pad.buttons as GamepadButton[])[13]={pressed:false,value:0} as GamepadButton;
  (pad as unknown as {axes:number[]}).axes=[0,1,0,0];
@@ -38,11 +53,16 @@ it('marks gamepad focus visually while navigating the menu with the pad',()=>{
  telemetry.focus();
  expect(document.querySelectorAll('.stream-menu .gamepad-focus').length).toBe(0);
  expect(document.activeElement).toBe(telemetry);
- // Pad navigation re-marks the newly focused option.
+ // Pad navigation re-marks the newly focused option (telemetry is index 3 now:
+ // up ×3 wraps back to resume).
  (pad as unknown as {axes:number[]}).axes=[0,0,0,0];
  menu.poll([pad],600);
- (pad.buttons as GamepadButton[])[12]={pressed:true,value:1} as GamepadButton;
- menu.poll([pad],610);
+ for (const at of [610, 620, 630]) {
+  (pad.buttons as GamepadButton[])[12]={pressed:true,value:1} as GamepadButton;
+  menu.poll([pad],at);
+  (pad.buttons as GamepadButton[])[12]={pressed:false,value:0} as GamepadButton;
+  menu.poll([pad],at+5);
+ }
  const resume2=document.querySelector<HTMLButtonElement>('[data-action="resume"]')!;
  expect(document.activeElement).toBe(resume2);
  expect(resume2.classList.contains('gamepad-focus')).toBe(true);

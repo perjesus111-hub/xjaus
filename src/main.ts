@@ -31,6 +31,9 @@ import { recommendedBitrate } from "./stream-options";
 import { createSettingsStore, engineSettings, type StreamSettings } from "./settings";
 import { applyUiPreferences, createUiPreferencesStore, type UiPreferences } from "./ui-preferences";
 import { initSettingsNavigation } from "./settings-nav";
+import { initCloudContext } from "./cloud-context";
+import { testVibration } from "./haptics-test";
+import { captureVideoFrame } from "./video-frame";
 import { version as appVersion } from "../package.json";
 import { microsoftSessionExpired, appendMicrosoftReauth } from "./stream-auth";
 import { consolePresentation } from "./console-presentation";
@@ -56,6 +59,8 @@ let connectionGeneration = 0;
 type Status = { authenticated: boolean; account: string; storage: string; catalogAccountScope?: string };
 type Tab = "home" | "consoles" | "cloud" | "settings";
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const screenTitleKeys = { home: 'homeTab', consoles: 'myConsolesTab', cloud: 'cloudTab', settings: 'settings' } as const;
+const screenTitle = get<HTMLElement>('screen-title');
 const loginScreen = get<HTMLElement>("login-screen");
 const dashboard = get<HTMLElement>("dashboard");
 const playerScreen = get<HTMLElement>("player-screen");
@@ -227,6 +232,7 @@ function showAuth(status: Status): void {
 function switchTab(tab: Tab, focusView = true): void {
   viewFocus.cancel();
   activeTab = tab;
+  bindText(screenTitle, () => t(screenTitleKeys[tab]));
   catalogNavigation.sync();
   for (const name of ["home", "consoles", "cloud", "settings"] as const) {
     get<HTMLElement>(`panel-${name}`).hidden = name !== tab;
@@ -266,6 +272,7 @@ function renderConsoles(consoles: ConsoleItem[]): void {
     const badge = document.createElement("span");
     badge.className = "console-badge";
     const rawPower = (item.powerState || "").toLowerCase();
+    card.dataset.power = rawPower;
     bindText(badge,()=>rawPower === "on" || rawPower === "poweredon" ? t('powerOn') : ['standby','connectedstandby'].includes(rawPower) ? t('standby') : rawPower === 'off' ? t('powerOff') : t('powerUnknown'));
     const title = document.createElement("h3"); title.textContent = name;
     const model = consolePresentation(item.consoleType);
@@ -580,7 +587,9 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
     syncStatsVisibility();
     const toggleTelemetry=()=>{if(!active() || !overlay.hidden)return;statsRequested=!statsRequested;statsPanel.hidden=!statsRequested;syncStatsVisibility();};
     document.addEventListener('visibilitychange',syncStatsVisibility);
-    const menu=mountStreamMenu(playerScreen,{setModal:value=>{controller.gamepad.setModal(value);if(!value)hud.reveal();},toggleTelemetry,disconnect:stopGame,exit:async()=>{await invoke('app_exit');}});
+    const menu=mountStreamMenu(playerScreen,{setModal:value=>{controller.gamepad.setModal(value);if(!value)hud.reveal();},toggleTelemetry,disconnect:stopGame,exit:async()=>{await invoke('app_exit');},
+      screenshot:()=>{const frame=captureVideoFrame(video);if(!frame){notice(()=>t('screenshotFailed'));return;}const link=document.createElement('a');link.href=frame;link.download=`xjaus-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;link.click();notice(()=>t('screenshotSaved'));},
+      vibration:async()=>{const result=await testVibration(()=>[...navigator.getGamepads()]);notice(()=>t(result==='ok'?'vibrationTested':'vibrationUnavailable'));}});
     const toggleMenu=()=>{if(active() && overlay.hidden)menu.toggle();};
     const menuButton=get('stream-menu-button');menuButton.addEventListener('click',toggleMenu);
     const telemetryKey=(event:KeyboardEvent)=>{if(event.key==='F11'&&event.ctrlKey&&!event.repeat){event.preventDefault();toggleTelemetry();}};
@@ -728,6 +737,19 @@ function settingsProfileVisible(): boolean {
   return !dashboard.hidden && activeTab === "settings";
 }
 const settingsStore = createSettingsStore(localStorage, command => invoke(command), settings => invoke("save_settings", { settings }));
+// --- Cloud Gaming: métricas reales del catálogo + franja contextual del juego enfocado ---
+const cloudContext = initCloudContext({
+  grid: cloudGrid,
+  meta: get('cloud-meta'),
+  panel: get('cloud-context'),
+  title: get('cloud-context-title'),
+  art: get<HTMLImageElement>('cloud-context-art'),
+  tags: get('cloud-context-tags'),
+  play: get<HTMLButtonElement>('cloud-context-play'),
+});
+const cloudMetaObserver = new MutationObserver(() => cloudContext.updateMeta());
+cloudMetaObserver.observe(cloudGrid, { childList: true, attributes: true, subtree: true });
+window.addEventListener('pagehide', () => cloudMetaObserver.disconnect(), { once: true });
 const controls = ["resolution", "bitrate", "codec", "audio", "audioGain"] as const;
 for (const key of controls) get<HTMLInputElement>(`stream-${key}`).disabled = true;
 const settingsReady = settingsStore.load().then(settings => {

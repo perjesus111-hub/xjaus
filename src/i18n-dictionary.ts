@@ -156,7 +156,21 @@ export const es = {
   "focusStrong": "Fuerte",
   "aboutVersion": "Versión",
   "aboutRepo": "Repositorio",
-  "aboutLicense": "XJAUS es software libre bajo la GNU General Public License v3."
+  "aboutLicense": "XJAUS es software libre bajo la GNU General Public License v3.",
+
+  "cloudMeta": "{count} juegos · {favorites} favoritos",
+  "cloudContextHeading": "Juego seleccionado",
+  "favoriteOn": "Favorito",
+  "screenshotItem": "Captura de pantalla",
+  "testVibration": "Probar vibración",
+  "vibrationTested": "Vibración probada en tu mando",
+  "vibrationUnavailable": "Vibración no disponible en este mando",
+  "screenshotSaved": "Captura descargada",
+  "screenshotFailed": "No se pudo capturar el video",
+  "consolesIntro": "Transmite desde tu consola Xbox en tu red local. Refresca para buscar consolas de tu cuenta.",
+  "homeTab": "Inicio",
+  "cloudTab": "Cloud Gaming",
+  "controllerConnected": "Mando conectado"
 } as const;
 export type MessageKey = keyof typeof es;
 export const en: Record<MessageKey,string> = {
@@ -184,6 +198,19 @@ export const en: Record<MessageKey,string> = {
   'aboutVersion': 'Version',
   'aboutRepo': 'Repository',
   'aboutLicense': 'XJAUS is free software under the GNU General Public License v3.',
+  'cloudMeta': '{count} games · {favorites} favorites',
+  'cloudContextHeading': 'Selected game',
+  'favoriteOn': 'Favorite',
+  'screenshotItem': 'Screenshot',
+  'testVibration': 'Test vibration',
+  'vibrationTested': 'Vibration tested on your controller',
+  'vibrationUnavailable': 'Vibration not available on this controller',
+  'screenshotSaved': 'Screenshot downloaded',
+  'screenshotFailed': 'Could not capture the video',
+  'consolesIntro': 'Stream from your Xbox console over your local network. Refresh to look for consoles on your account.',
+  'homeTab': 'Home',
+  'cloudTab': 'Cloud Gaming',
+  'controllerConnected': 'Controller connected',
   'refreshConsoles': 'Refresh · X',
   'powerOff': 'Powered off',
   'streamMenu': 'Stream menu',
