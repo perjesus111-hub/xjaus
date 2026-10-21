@@ -136,6 +136,9 @@ featuredHero.addEventListener('keydown',event=>{if(event.key==='ArrowLeft'){even
 let featuredDialog: HTMLDialogElement | undefined;
 let featuredPadFrame: number | undefined;
 let featuredPadButtons = new Set<number>();
+function snapshotFeaturedPadButtons(): Set<number> {
+  return new Set(Array.from(navigator.getGamepads?.() ?? []).flatMap(pad => pad?.connected && pad.mapping==='standard' ? pad.buttons.flatMap((button,index)=>button.pressed?[index]:[]) : []));
+}
 function pollFeaturedDialog() {
   if (!featuredDialog?.open) { featuredPadFrame=undefined; return; }
   for (const pad of navigator.getGamepads?.() ?? []) {
@@ -168,7 +171,7 @@ function openFeaturedDialog(game: CloudTitle): void {
   cancel.addEventListener('click',close); dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   favorite.addEventListener('click',()=>{library().toggle(game);refreshFavorite();renderCloud();renderHomeFeatured();});
   play.addEventListener('click',()=>{close();libraryFilter='all';catalogQuery=gameDisplayName(game);cloudSearch.value=catalogQuery;catalogVisible=24;appendBatch=null;switchTab('cloud',false);renderCloud();requestAnimationFrame(()=>{const card=document.querySelector<HTMLElement>(`#cloud-container [data-title-id="${CSS.escape(game.titleId)}"]`);const connect=card?.querySelector<HTMLButtonElement>('.connect-btn');if(!connect){notice(()=>t('unavailableGame'));return;}connect.focus();connect.click();});});
-  actions.append(play,favorite,cancel); dialog.append(art,title,actions); document.body.append(dialog); featuredDialog=dialog; featuredPadButtons.clear(); dialog.showModal();play.focus(); featuredPadFrame=requestAnimationFrame(pollFeaturedDialog);
+  actions.append(play,favorite,cancel); dialog.append(art,title,actions); document.body.append(dialog); featuredDialog=dialog; featuredPadButtons=snapshotFeaturedPadButtons(); dialog.showModal();play.focus(); featuredPadFrame=requestAnimationFrame(pollFeaturedDialog);
 }
 function openCurrentFeatured(event?: Event): void { event?.stopPropagation(); const game=featuredGames.find(item=>item.titleId===featuredOpen.dataset.titleId);if(game)openFeaturedDialog(game); }
 featuredOpen.addEventListener('click',openCurrentFeatured);
