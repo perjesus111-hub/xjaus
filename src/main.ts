@@ -134,6 +134,24 @@ get<HTMLButtonElement>('featured-prev').addEventListener('click',()=>rotateFeatu
 get<HTMLButtonElement>('featured-next').addEventListener('click',()=>rotateFeatured(1));
 featuredHero.addEventListener('keydown',event=>{if(event.key==='ArrowLeft'){event.preventDefault();rotateFeatured(-1);}if(event.key==='ArrowRight'){event.preventDefault();rotateFeatured(1);}});
 let featuredDialog: HTMLDialogElement | undefined;
+let featuredPadFrame: number | undefined;
+let featuredPadButtons = new Set<number>();
+function pollFeaturedDialog() {
+  if (!featuredDialog?.open) { featuredPadFrame=undefined; return; }
+  for (const pad of navigator.getGamepads?.() ?? []) {
+    if (!pad?.connected || pad.mapping!=='standard') continue;
+    const pressed=new Set(pad.buttons.flatMap((button,index)=>button.pressed?[index]:[]));
+    const edge=(button:number)=>pressed.has(button)&&!featuredPadButtons.has(button);
+    const items=[...featuredDialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    const current=items.indexOf(document.activeElement as HTMLButtonElement);
+    if(edge(1)){featuredDialog.querySelector<HTMLButtonElement>('[data-featured-cancel]')?.click();break;}
+    if(edge(0)){(document.activeElement as HTMLButtonElement)?.click();break;}
+    if(edge(12)||edge(14))items[(Math.max(0,current)-1+items.length)%items.length]?.focus();
+    if(edge(13)||edge(15))items[(Math.max(0,current)+1)%items.length]?.focus();
+    featuredPadButtons=pressed;
+  }
+  featuredPadFrame=requestAnimationFrame(pollFeaturedDialog);
+}
 function openFeaturedDialog(game: CloudTitle): void {
   featuredPaused=true; syncFeaturedTimer();
   const origin=document.activeElement as HTMLElement | null;
@@ -145,12 +163,12 @@ function openFeaturedDialog(game: CloudTitle): void {
   const play=document.createElement('button'); play.type='button'; play.className='featured-dialog-play'; play.textContent='Jugar ahora';
   const favorite=document.createElement('button'); favorite.type='button';
   const refreshFavorite=()=>{const saved=library().favorites().includes(game.titleId);favorite.textContent=saved?'Quitar de favoritos':'Añadir a favoritos';};refreshFavorite();
-  const cancel=document.createElement('button'); cancel.type='button'; cancel.textContent='Cancelar';
-  const close=()=>{featuredDialog=undefined;dialog.close();dialog.remove();featuredPaused=false;syncFeaturedTimer();origin?.focus();};
+  const cancel=document.createElement('button'); cancel.type='button'; cancel.dataset.featuredCancel='true'; cancel.textContent='Cancelar';
+  const close=()=>{featuredDialog=undefined;if(featuredPadFrame!==undefined)cancelAnimationFrame(featuredPadFrame);featuredPadFrame=undefined;featuredPadButtons.clear();dialog.close();dialog.remove();featuredPaused=false;syncFeaturedTimer();origin?.focus();};
   cancel.addEventListener('click',close); dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   favorite.addEventListener('click',()=>{library().toggle(game);refreshFavorite();renderCloud();renderHomeFeatured();});
   play.addEventListener('click',()=>{close();libraryFilter='all';catalogQuery='';cloudSearch.value='';appendBatch=null;switchTab('cloud');renderCloud();const card=document.querySelector<HTMLElement>(`#cloud-container [data-title-id="${CSS.escape(game.titleId)}"]`);card?.querySelector<HTMLButtonElement>('.connect-btn')?.click();});
-  actions.append(play,favorite,cancel); dialog.append(art,title,actions); document.body.append(dialog); featuredDialog=dialog; dialog.showModal();play.focus();
+  actions.append(play,favorite,cancel); dialog.append(art,title,actions); document.body.append(dialog); featuredDialog=dialog; featuredPadButtons.clear(); dialog.showModal();play.focus(); featuredPadFrame=requestAnimationFrame(pollFeaturedDialog);
 }
 featuredOpen.addEventListener('click',()=>{const game=featuredGames.find(item=>item.titleId===featuredOpen.dataset.titleId);if(game)openFeaturedDialog(game);});
 function libraryTitles() { return filterLibrary(cloudTitles,libraryFilter,library().favorites(),library().recent(cloudTitles).map(g=>g.titleId)); }
@@ -213,7 +231,7 @@ function syncCatalogPager() {
   catalogPager.update(Math.min(catalogVisible,total),total,!dashboard.hidden && activeTab === 'cloud' && playerScreen.hidden && !starting && !loadingCatalog && !catalogSearchPending);
 }
 const catalogNavigation = createCatalogNavigation(cloudSearch, cloudGrid, () => playerScreen.hidden && !starting && !session, () => !dashboard.hidden && activeTab === 'cloud', {
- enabled:()=>!dashboard.hidden && playerScreen.hidden && !starting && !session && !validatingLaunch,
+ enabled:()=>!dashboard.hidden && playerScreen.hidden && !starting && !session && !validatingLaunch && !featuredDialog,
  index:()=>tabs.indexOf(activeTab),switch:index=>switchTab(tabs[index],true),
 }, origin => catalogPager.request(origin));
 document.addEventListener('focusin', event=>{document.querySelectorAll('.gamepad-focus').forEach(el=>{if(el!==event.target)el.classList.remove('gamepad-focus');});});

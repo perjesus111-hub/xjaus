@@ -670,7 +670,9 @@ html.stream-menu-open #xjaus-cursor { opacity:0; }
 .featured-hero .dashboard-hero-copy { position: relative; z-index: 1; }
 .featured-open { margin-top: 18px; padding: 11px 16px; border: 1px solid var(--gold-muted); border-radius: 8px; background: rgba(213,172,72,.13); color: var(--gold-bright); font-weight: 700; cursor: pointer; }
 .featured-open:disabled { opacity: .55; cursor: default; }
-.featured-arrow { position: absolute; z-index: 2; top: 50%; width: 40px; height: 40px; border: 1px solid var(--gold-muted); border-radius: 50%; background: rgba(8,9,11,.75); color: var(--gold-bright); font-size: 1.8rem; line-height: 1; cursor: pointer; transform: translateY(-50%); }
+.featured-arrow { position: absolute; z-index: 2; top: 50%; width: 40px; height: 40px; border: 1px solid var(--gold-muted); border-radius: 50%; background: rgba(8,9,11,.75); color: var(--gold-bright); font-size: 1.8rem; line-height: 1; cursor: pointer; transform: translateY(-50%); opacity: .22; transition: opacity .16s ease, background .16s ease; }
+.featured-hero:hover .featured-arrow, .featured-hero:focus-within .featured-arrow { opacity: 1; }
+.featured-arrow:hover, .featured-arrow:focus-visible { background: rgba(25,23,17,.96); }
 #featured-prev { left: 18px; } #featured-next { right: 18px; }
 .featured-indicators { position: absolute; z-index: 2; right: 24px; bottom: 20px; display: flex; gap: 7px; }
 .featured-indicator { width: 9px; height: 9px; padding: 0; border: 1px solid var(--gold-bright); border-radius: 50%; background: transparent; cursor: pointer; }
