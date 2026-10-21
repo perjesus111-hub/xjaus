@@ -643,16 +643,37 @@ async fn list_cloud_titles(state: State<'_, AppState>) -> Result<Value, String> 
 #[tauri::command]
 async fn catalog_products(
     product_ids: Vec<String>,
+    language: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
     let _ = snapshot_tokens(&state)?;
-    catalog::catalog_products(&state.client, &product_ids).await
+    catalog::catalog_products(
+        &state.client,
+        &product_ids,
+        language.as_deref().unwrap_or("es"),
+    )
+    .await
 }
 
 #[tauri::command]
-async fn list_gamepass_catalog(state: State<'_, AppState>) -> Result<Value, String> {
+async fn list_gamepass_catalog(
+    language: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
     let _ = snapshot_tokens(&state)?;
-    get_json(&state.client, "https://catalog.gamepass.com/sigls/v2?id=f13cf6b4-57e6-4459-89df-6aec18cf0538&market=MX&language=es-MX".into(), None, None, &[("Accept-Language", "es-MX, es;q=0.9, en;q=0.1")]).await
+    let (locale, accept_language) =
+        catalog::catalog_request_locale(language.as_deref().unwrap_or("es"))?;
+    let url = format!(
+        "https://catalog.gamepass.com/sigls/v2?id=f13cf6b4-57e6-4459-89df-6aec18cf0538&market=MX&language={locale}"
+    );
+    get_json(
+        &state.client,
+        url,
+        None,
+        None,
+        &[("Accept-Language", accept_language)],
+    )
+    .await
 }
 
 #[derive(Deserialize)]

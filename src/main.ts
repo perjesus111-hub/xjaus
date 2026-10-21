@@ -27,6 +27,7 @@ import { createCatalogSearch, filterCatalog, normalizeSearch } from "./catalog-s
 import { createCatalogNavigation } from "./catalog-navigation";
 import { createCloudGridController } from "./cloud-grid";
 import { readMetadata, writeMetadata, missingMetadataIds } from "./catalog-cache";
+import { watchCatalogLocale } from "./catalog-locale";
 import { recommendedBitrate } from "./stream-options";
 import { createSettingsStore, engineSettings, type StreamSettings } from "./settings";
 import { applyUiPreferences, createUiPreferencesStore, type UiPreferences } from "./ui-preferences";
@@ -115,11 +116,12 @@ let featuredPaused = false;
 function dayKey() { return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 function renderHomeFeatured() {
   featuredGames = featuredForDay(cloudTitles, dayKey());
-  if (!featuredGames.length) { featuredOpen.disabled=true; featuredTitle.textContent=loadingCatalog?'Cargando juegos destacados…':'No hay juegos de Cloud Gaming disponibles'; featuredMeta.textContent=loadingCatalog?'Verificando tu catálogo real…':'Vuelve a intentarlo desde Cloud Gaming.'; featuredHero.style.backgroundImage='linear-gradient(90deg, rgba(5,7,9,.94), rgba(18,20,23,.78))'; featuredIndicators.replaceChildren(); return; }
+  if (!featuredGames.length) { featuredOpen.disabled=true; bindText(featuredTitle,()=>t(loadingCatalog?'loadingFeatured':'noFeaturedGames')); bindText(featuredMeta,()=>loadingCatalog?t('verifyingGames'):t('retryFromCloud')); featuredHero.style.backgroundImage='linear-gradient(90deg, rgba(5,7,9,.94), rgba(18,20,23,.78))'; featuredIndicators.replaceChildren(); return; }
   featuredIndex %= featuredGames.length;
   const game=featuredGames[featuredIndex]!;
+  clearTextBinding(featuredTitle); clearTextBinding(featuredMeta);
   featuredTitle.textContent=gameDisplayName(game);
-  featuredMeta.textContent=game.description || (game.features?.multiplayer ? t('multiplayer') : 'Disponible en Xbox Cloud Gaming');
+  featuredMeta.textContent=game.description || (game.features?.multiplayer ? t('multiplayer') : t('availableOnCloud'));
   featuredHero.style.backgroundImage=`linear-gradient(90deg, rgba(5,7,9,.94) 0%, rgba(5,7,9,.64) 42%, rgba(5,7,9,.12) 78%), url("${game.heroArt || game.boxArt}")`;
   featuredOpen.disabled=false; featuredOpen.dataset.titleId=game.titleId;
   featuredIndicators.replaceChildren(...featuredGames.map((_item,index)=>{const b=document.createElement('button');b.type='button';b.className='featured-indicator';b.setAttribute('aria-label',`${index+1}/${featuredGames.length}`);b.setAttribute('aria-current',String(index===featuredIndex));b.addEventListener('click',()=>{featuredIndex=index;renderHomeFeatured();});return b;}));
@@ -163,10 +165,11 @@ function openFeaturedDialog(game: CloudTitle): void {
   const title=document.createElement('h2'); title.id='featured-dialog-title'; title.textContent=gameDisplayName(game); dialog.setAttribute('aria-labelledby',title.id);
   const art=document.createElement('img'); art.alt=''; art.src=game.boxArt || game.heroArt || ''; art.hidden=!art.src;
   const actions=document.createElement('div'); actions.className='featured-dialog-actions';
-  const play=document.createElement('button'); play.type='button'; play.className='featured-dialog-play'; play.textContent='Jugar ahora';
+  const play=document.createElement('button'); play.type='button'; play.className='featured-dialog-play'; bindText(play,()=>t('playNow'));
   const favorite=document.createElement('button'); favorite.type='button';
-  const refreshFavorite=()=>{const saved=library().favorites().includes(game.titleId);favorite.textContent=saved?'Quitar de favoritos':'Añadir a favoritos';};refreshFavorite();
-  const cancel=document.createElement('button'); cancel.type='button'; cancel.dataset.featuredCancel='true'; cancel.textContent='Cancelar';
+  let isFavorite=library().favorites().includes(game.titleId);
+  const refreshFavorite=()=>{isFavorite=library().favorites().includes(game.titleId);bindText(favorite,()=>t(isFavorite?'removeFavorite':'addFavorite'));};refreshFavorite();
+  const cancel=document.createElement('button'); cancel.type='button'; cancel.dataset.featuredCancel='true'; bindText(cancel,()=>t('cancel'));
   const close=()=>{featuredDialog=undefined;if(featuredPadFrame!==undefined)cancelAnimationFrame(featuredPadFrame);featuredPadFrame=undefined;featuredPadButtons.clear();dialog.close();dialog.remove();featuredPaused=false;syncFeaturedTimer();origin?.focus();};
   cancel.addEventListener('click',close); dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   favorite.addEventListener('click',()=>{library().toggle(game);refreshFavorite();renderCloud();renderHomeFeatured();});
@@ -196,17 +199,18 @@ function renderRecent() {
 const cloudSearch = get<HTMLInputElement>("cloud-search");
 // Modo append marcado ANTES del render; renderCloud lo consume y lo limpia.
 let appendBatch: "more" | "hydrate" | null = null;
+const catalogLanguage = () => i18n.locale;
 const cloudGridController = createCloudGridController(cloudGrid, cloudSearch, () => []);
 let metadataQueue = newMetadataQueue();
 function newMetadataQueue() {
   return createMetadataQueue(async (ids) => {
     const generation = catalogGeneration;
-    const result = await invoke<{Products?: unknown[]}>("catalog_products", {productIds: ids});
+    const result = await invoke<{Products?: unknown[]}>("catalog_products", {productIds: ids, language: catalogLanguage()});
     if (generation !== catalogGeneration) return;
     const merged = new Map(catalogMetadata.Products.map(item => [(item as {ProductId?: string}).ProductId, item]));
     for (const item of result.Products ?? []) merged.set((item as {ProductId?: string}).ProductId, item);
     catalogMetadata = {Products: [...merged.values()]};
-    try { writeMetadata(localStorage, catalogScope, catalogMetadata); } catch { /* optional cache */ }
+    try { writeMetadata(localStorage, catalogScope, catalogLanguage(), catalogMetadata); } catch { /* optional cache */ }
     cloudTitles = normalizeCloudTitles(catalogRaw, catalogMetadata);
     appendBatch = "hydrate"; renderCloud();
   });
@@ -254,7 +258,7 @@ function notice(copy: string | (() => string)): void {
   toast.replaceChildren(copyNode);
   const expired = microsoftSessionExpired(text);
   toastManager.show(text, expired ? 6500 : 4000);
-  clearTextBinding(diagnostics); diagnostics.textContent = text;
+  bindText(diagnostics,render);
   if (expired) {
     appendMicrosoftReauth(toast, () => {
       // Retain the secure store; the existing OAuth flow replaces it on success.
@@ -487,7 +491,7 @@ function makeGameCard(game: CloudTitle): HTMLElement {
           const productId = records.find(item => item.titleId === game.titleId)?.details?.productId;
           if (productId && productIds(raw).includes(productId)) {
             try {
-              const metadata = await invoke<{Products: unknown[]}>("catalog_products", {productIds: [productId]});
+              const metadata = await invoke<{Products: unknown[]}>("catalog_products", {productIds: [productId], language: catalogLanguage()});
               fresh = normalizeCloudTitles(raw, metadata).find(item => item.titleId === game.titleId) ?? fresh;
             } catch { /* Commercial fallback is still safe for presentation. */ }
           }
@@ -541,12 +545,12 @@ async function hydrateCloud(generation: number): Promise<void> {
   try {
     if (end > start) {
       const missing = missingMetadataIds(ids.slice(start, end), catalogMetadata);
-      const result = missing.length ? await invoke<{ Products?: unknown[] }>("catalog_products", { productIds: missing }) : { Products: [] };
+      const result = missing.length ? await invoke<{ Products?: unknown[] }>("catalog_products", { productIds: missing, language: catalogLanguage() }) : { Products: [] };
       if (generation !== catalogGeneration) return;
       const merged = new Map(catalogMetadata.Products.map((item) => [(item as { ProductId?: string }).ProductId, item]));
       for (const item of result.Products ?? []) merged.set((item as { ProductId?: string }).ProductId, item);
       catalogMetadata = { Products: [...merged.values()] };
-      try { writeMetadata(localStorage, catalogScope, catalogMetadata); } catch { /* storage unavailable */ }
+      try { writeMetadata(localStorage, catalogScope, catalogLanguage(), catalogMetadata); } catch { /* storage unavailable */ }
     }
   } catch { if (generation === catalogGeneration) notice(() => t('artUnavailable')); }
   finally {
@@ -572,7 +576,7 @@ async function loadCloud(): Promise<void> {
     catalogRaw = raw;
     catalogVisible = 24;
     catalogHydrated = 0;
-    try { catalogMetadata = readMetadata(localStorage, catalogScope); } catch { catalogMetadata = { Products: [] }; }
+    try { catalogMetadata = readMetadata(localStorage, catalogScope, catalogLanguage()); } catch { catalogMetadata = { Products: [] }; }
     cloudTitles = normalizeCloudTitles(raw, catalogMetadata);
     loadingCatalog = false;
     renderCloud();
@@ -715,7 +719,7 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
     controller.attachVideoElement(video);
     const candidate = new XboxSessionCoordinator(
       controller,
-      (error) => { if (active()) { const message=errorText(error); notice(/streaming keepalive HTTP 401|No se pudo renovar la sesión Xbox/i.test(message) ? 'La sesión Xbox no pudo renovarse. Vuelve a iniciar sesión si el problema persiste.' : `ICE: ${message}`); } },
+      (error) => { if (active()) { const message=errorText(error); notice(()=>/streaming keepalive HTTP 401|No se pudo renovar la sesión Xbox/i.test(message) ? t('sessionRenewalFailed') : t('iceError',{error:message})); } },
       ({ state, queue }) => {
         if (!active()) return;
         if (kind === "home") return;
@@ -892,14 +896,19 @@ cloudSearch.addEventListener("input", searchInput);
 cloudSearch.addEventListener("search", searchInput);
 const languageControl = get<HTMLSelectElement>('app-language');
 languageControl.value = i18n.preference;
+const stopCatalogLocaleWatch = watchCatalogLocale(i18n, () => catalogRaw !== undefined, () => {
+  metadataQueue.cancelPending();
+  void loadCloud();
+});
+window.addEventListener('pagehide', stopCatalogLocaleWatch, { once: true });
 languageControl.addEventListener('change', () => {
   const value = languageControl.value;
   if (value === 'auto' || value === 'es' || value === 'en') i18n.setPreference(value);
 });
 get<HTMLButtonElement>('copy-diagnostics').addEventListener('click', async () => {
   const report = sanitizeDiagnostics(get<HTMLElement>('output').textContent ?? '');
-  try { await navigator.clipboard.writeText(report); notice('Informe técnico copiado'); }
-  catch { notice('No se pudo copiar el informe técnico'); }
+  try { await navigator.clipboard.writeText(report); notice(() => t('diagnosticsCopied')); }
+  catch { notice(() => t('diagnosticsCopyFailed')); }
 });
 get<HTMLButtonElement>("stop-stream").addEventListener("click", () => { void stopGame(); });
 void settingsReady.then(() => invoke<Status>("auth_status")).then(showAuth).catch((error) => notice(() => t('sessionStatus',{error:errorText(error)})));

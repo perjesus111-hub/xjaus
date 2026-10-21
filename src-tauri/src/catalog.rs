@@ -54,11 +54,24 @@ fn compact_product(product: &Value) -> Value {
 
 const DISPLAY_CATALOG_BATCH_SIZE: usize = 25;
 
-pub async fn catalog_products(client: &Client, input: &[String]) -> Result<Value, String> {
+pub fn catalog_request_locale(language: &str) -> Result<(&'static str, &'static str), String> {
+    match language {
+        "en" => Ok(("en-US", "en-US, en;q=0.9, es;q=0.1")),
+        "es" => Ok(("es-MX", "es-MX, es;q=0.9, en;q=0.1")),
+        _ => Err("Idioma de catálogo no válido".into()),
+    }
+}
+
+pub async fn catalog_products(
+    client: &Client,
+    input: &[String],
+    language: &str,
+) -> Result<Value, String> {
     catalog_products_from(
         client,
         input,
         "https://displaycatalog.mp.microsoft.com/v7.0/products",
+        language,
     )
     .await
 }
@@ -66,7 +79,9 @@ async fn catalog_products_from(
     client: &Client,
     input: &[String],
     endpoint: &str,
+    language: &str,
 ) -> Result<Value, String> {
+    let (locale, accept_language) = catalog_request_locale(language)?;
     let ids = valid_product_ids(input)?;
     let mut products = Vec::new();
     for batch in ids.chunks(DISPLAY_CATALOG_BATCH_SIZE) {
@@ -74,10 +89,10 @@ async fn catalog_products_from(
         url.query_pairs_mut()
             .append_pair("bigIds", &batch.join(","))
             .append_pair("market", "MX")
-            .append_pair("languages", "es-MX");
+            .append_pair("languages", locale);
         let response = client
             .get(url)
-            .header("Accept-Language", "es-MX, es;q=0.9, en;q=0.1")
+            .header("Accept-Language", accept_language)
             .send()
             .await
             .map_err(|_| "Error de red en DisplayCatalog")?;
@@ -165,10 +180,102 @@ mod tests {
             let ids = (0..26)
                 .map(|n| format!("9N2Z748{:05}", n))
                 .collect::<Vec<_>>();
-            catalog_products_from(&Client::new(), &ids, &endpoint)
+            catalog_products_from(&Client::new(), &ids, &endpoint, "es")
                 .await
                 .unwrap();
             assert_eq!(server.join().unwrap(), vec![25, 1]);
+        });
+    }
+    #[test]
+    fn catalog_locale_changes_metadata_language_without_changing_market() {
+        tauri::async_runtime::block_on(async {
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let endpoint = format!("http://{}/products", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let mut observed = Vec::new();
+                for _ in 0..2 {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    socket
+                        .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+                        .unwrap();
+                    let mut data = [0; 4096];
+                    let n = socket.read(&mut data).unwrap();
+                    let request = String::from_utf8_lossy(&data[..n]);
+                    let path = request
+                        .lines()
+                        .next()
+                        .unwrap()
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap();
+                    let url = Url::parse(&format!("http://fixture{path}")).unwrap();
+                    let query = url
+                        .query_pairs()
+                        .into_owned()
+                        .collect::<std::collections::HashMap<_, _>>();
+                    let accept_language = request
+                        .lines()
+                        .find(|line| line.to_ascii_lowercase().starts_with("accept-language:"))
+                        .unwrap()
+                        .split_once(':')
+                        .unwrap()
+                        .1
+                        .trim()
+                        .to_owned();
+                    let body = r#"{"Products":[]}"#;
+                    write!(
+                        socket,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .unwrap();
+                    observed.push((
+                        query.get("market").cloned().unwrap(),
+                        query.get("languages").cloned().unwrap(),
+                        accept_language,
+                    ));
+                }
+                observed
+            });
+            let client = Client::new();
+            let ids = vec!["9N2Z748SPMTM".to_string()];
+            catalog_products_from(&client, &ids, &endpoint, "en")
+                .await
+                .unwrap();
+            catalog_products_from(&client, &ids, &endpoint, "es")
+                .await
+                .unwrap();
+            assert_eq!(
+                server.join().unwrap(),
+                vec![
+                    (
+                        "MX".into(),
+                        "en-US".into(),
+                        "en-US, en;q=0.9, es;q=0.1".into()
+                    ),
+                    (
+                        "MX".into(),
+                        "es-MX".into(),
+                        "es-MX, es;q=0.9, en;q=0.1".into()
+                    ),
+                ]
+            );
+        });
+    }
+    #[test]
+    fn rejects_unrecognized_catalog_language_before_network_access() {
+        tauri::async_runtime::block_on(async {
+            let error = catalog_products_from(
+                &Client::new(),
+                &["9N2Z748SPMTM".to_string()],
+                "http://127.0.0.1:1/products",
+                "fr",
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error, "Idioma de catálogo no válido");
         });
     }
     #[test]

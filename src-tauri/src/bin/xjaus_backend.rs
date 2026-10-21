@@ -448,7 +448,8 @@ impl Backend {
                 let ids: Vec<String> =
                     serde_json::from_value(args.get("productIds").cloned().unwrap_or(Value::Null))
                         .map_err(|_| "Falta la lista de productos")?;
-                catalog::catalog_products(&self.client, &ids).await
+                let language = args.get("language").and_then(Value::as_str).unwrap_or("es");
+                catalog::catalog_products(&self.client, &ids, language).await
             }
             "start_stream" => {
                 let start = args.get("args").ok_or("Faltan datos de streaming")?;
