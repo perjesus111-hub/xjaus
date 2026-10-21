@@ -530,8 +530,35 @@ impl Backend {
                 to_json(self.stream_mut()?.exchange_ice(candidates).await?)
             }
             "stream_keepalive" => {
-                self.stream_mut()?.keepalive().await?;
-                Ok(Value::Null)
+                let first = self.stream_mut()?.keepalive().await;
+                match first {
+                    Ok(()) => Ok(Value::Null),
+                    Err(error) if error.contains("HTTP 401") => {
+                        // A long-running session can outlive the gsToken captured
+                        // at start. Refresh once, update this active SessionClient's
+                        // bearer and retry without recreating the session/peer.
+                        let kind = self
+                            .stream
+                            .as_ref()
+                            .ok_or("No hay sesión activa")?
+                            .session_kind();
+                        let epoch = self.auth_gate.capture()?;
+                        let current = self.tokens()?.clone();
+                        let updated = auth::refresh_bundle(&self.client, &current)
+                            .await
+                            .map_err(|e| format!("No se pudo renovar la sesión Xbox"))?;
+                        self.auth_gate.commit(epoch, || {
+                            vault::save(&updated).ok();
+                            self.tokens = Some(updated);
+                            Ok::<_, String>(())
+                        })?;
+                        let bearer = text_field(self.streaming_token(kind)?, "gsToken")?;
+                        self.stream_mut()?.set_streaming_token(bearer);
+                        self.stream_mut()?.keepalive().await?;
+                        Ok(Value::Null)
+                    }
+                    Err(error) => Err(error),
+                }
             }
             "stop_stream" => {
                 session::stop_previous(&mut self.stream).await?;

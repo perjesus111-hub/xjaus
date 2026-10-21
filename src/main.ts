@@ -715,7 +715,7 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
     controller.attachVideoElement(video);
     const candidate = new XboxSessionCoordinator(
       controller,
-      (error) => { if (active()) notice(`ICE: ${errorText(error)}`); },
+      (error) => { if (active()) { const message=errorText(error); notice(/streaming keepalive HTTP 401|No se pudo renovar la sesión Xbox/i.test(message) ? 'La sesión Xbox no pudo renovarse. Vuelve a iniciar sesión si el problema persiste.' : `ICE: ${message}`); } },
       ({ state, queue }) => {
         if (!active()) return;
         if (kind === "home") return;
