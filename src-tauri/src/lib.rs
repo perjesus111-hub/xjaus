@@ -27,7 +27,7 @@ pub struct AppState {
     cancellations: connection_cancel::ConnectionCancellation,
     stream_owner: Mutex<Option<String>>,
     client: Client,
-    pending: Mutex<Option<PendingLogin>>,
+    pending: Mutex<Option<(String, PendingLogin)>>,
     tokens: Mutex<Option<TokenBundle>>,
     stream: Mutex<Option<SessionClient>>,
     stream_operation: tokio::sync::Mutex<()>,
@@ -71,6 +71,19 @@ struct Status {
 fn state_error() -> String {
     "Authentication state is unavailable".into()
 }
+
+async fn complete_login_timed(
+    client: &Client,
+    pending: &PendingLogin,
+) -> Result<TokenBundle, auth::AuthError> {
+    tokio::time::timeout(
+        Duration::from_secs(60),
+        auth::complete_login_from_device_code(client, pending),
+    )
+    .await
+    .unwrap_or(Err(auth::AuthError::Timeout))
+}
+
 /// Estado unificado post-auth (usado por refresh/poll_login/load/persist).
 fn auth_status_after(state: &State<'_, AppState>) -> Status {
     Status {
@@ -205,58 +218,75 @@ pub fn logout_state(
 }
 
 #[tauri::command]
-async fn begin_login(state: State<'_, AppState>) -> Result<auth::LoginStart, String> {
-    let epoch = state.auth_gate.capture()?;
-    let (login, pending) = auth::begin_login(&state.client)
-        .await
-        .map_err(|e| e.to_string())?;
+async fn begin_login(
+    attempt_id: String,
+    state: State<'_, AppState>,
+) -> Result<auth::LoginStart, String> {
+    let (epoch, ()) = state.auth_gate.begin_attempt_with(&attempt_id, || {
+        *state.pending.lock().map_err(|_| state_error())? = None;
+        Ok(())
+    })?;
+    let mut invalidated = state.auth_gate.subscribe();
+    let (login, pending) = tokio::select! {
+        _ = state.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+        result = auth::begin_login(&state.client) => result.map_err(|e| e.to_string())?,
+    };
     state.auth_gate.publish_pending(epoch, || {
-        *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+        *state.pending.lock().map_err(|_| state_error())? = Some((attempt_id, pending));
         Ok(())
     })?;
     Ok(login)
 }
 
 #[tauri::command]
-async fn begin_login_window(state: State<'_, AppState>) -> Result<auth::LoginStart, String> {
-    let login = begin_login(state).await?;
-    Ok(login)
+async fn begin_login_window(
+    attempt_id: String,
+    state: State<'_, AppState>,
+) -> Result<auth::LoginStart, String> {
+    begin_login(attempt_id, state).await
 }
 
 #[tauri::command]
-async fn poll_login(state: State<'_, AppState>) -> Result<Status, String> {
-    // Tomar el pending SIN mantener el lock durante el await (MutexGuard no es Send).
-    let (epoch, pending) = {
-        let _commit = state.auth_gate.lock_commit()?;
-        let epoch = state.auth_gate.current();
+fn cancel_login(attempt_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.auth_gate.cancel_attempt_with(&attempt_id, || {
+        let mut pending = state.pending.lock().map_err(|_| state_error())?;
+        if pending
+            .as_ref()
+            .is_some_and(|(active_id, _)| active_id == &attempt_id)
+        {
+            *pending = None;
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn poll_login(attempt_id: String, state: State<'_, AppState>) -> Result<Status, String> {
+    let (epoch, mut pending) = state.auth_gate.with_attempt(&attempt_id, |epoch| {
         let mut guard = state.pending.lock().map_err(|_| state_error())?;
-        (epoch, guard.take())
-    };
+        match guard.take() {
+            Some((pending_id, pending)) if pending_id == attempt_id => Ok((epoch, pending)),
+            Some(other) => {
+                *guard = Some(other);
+                Err(auth_gate::INVALIDATED.into())
+            }
+            None => Err("Start sign-in first".into()),
+        }
+    })?;
 
-    let Some(mut pending) = pending else {
-        // Sin pending: ¿quizá ya se completó en un poll anterior?
-        let authed = state.tokens.lock().map_err(|_| state_error())?.is_some();
-        return if authed {
-            Ok(Status {
-                authenticated: true,
-                catalog_account_scope: state
-                    .tokens
-                    .lock()
-                    .map_err(|_| state_error())?
-                    .as_ref()
-                    .and_then(|t| account_scope::catalog_account_scope(&t.web_token)),
-                account: "Xbox account".into(),
-                storage: "secure vault".into(),
-            })
-        } else {
-            Err("Start sign-in first".into())
-        };
+    let mut invalidated = state.auth_gate.subscribe();
+    let result = tokio::select! {
+        _ = state.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+        result = poll_device_code(&state.client, &mut pending) => result,
     };
-
-    match poll_device_code(&state.client, &mut pending).await {
+    match result {
         Ok(_) | Err(auth::AuthError::AlreadyVerified) => {
-            // Usuario autenticado (ahora o en un poll anterior): completar el flujo.
-            match auth::complete_login_from_device_code(&state.client, &pending).await {
+            let completion = tokio::select! {
+                _ = state.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+                result = complete_login_timed(&state.client, &pending) => result,
+            };
+            match completion {
                 Ok(tokens) => {
                     let saved = state.auth_gate.commit(epoch, || {
                         let saved = vault::save(&tokens);
@@ -266,12 +296,9 @@ async fn poll_login(state: State<'_, AppState>) -> Result<Status, String> {
                     })?;
                     let storage = match saved {
                         Ok(()) => "keyring",
-                        Err(error) if error.contains("fallback passphrase required") => {
-                            "passphrase-required"
-                        }
+                        Err(error) if error.contains("fallback passphrase required") => "passphrase-required",
                         Err(_) => return Err(
-                            "Authentication succeeded, but secure storage failed; tokens remain only in memory"
-                                .into(),
+                            "Authentication succeeded, but secure storage failed; tokens remain only in memory".into(),
                         ),
                     };
                     Ok(Status {
@@ -281,44 +308,44 @@ async fn poll_login(state: State<'_, AppState>) -> Result<Status, String> {
                             .lock()
                             .map_err(|_| state_error())?
                             .as_ref()
-                            .and_then(|t| account_scope::catalog_account_scope(&t.web_token)),
+                            .and_then(|tokens| {
+                                account_scope::catalog_account_scope(&tokens.web_token)
+                            }),
                         account: "Xbox account".into(),
                         storage: storage.into(),
                     })
                 }
-                Err(e) => {
-                    // El intercambio falló pero el access token sigue en pending y
-                    // es válido: conservarlo para reintentar en el siguiente poll.
+                Err(error) => {
                     state.auth_gate.publish_pending(epoch, || {
-                        *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+                        *state.pending.lock().map_err(|_| state_error())? =
+                            Some((attempt_id.clone(), pending));
                         Ok(())
                     })?;
-                    Err(e.to_string())
+                    Err(error.to_string())
                 }
             }
         }
-        Err(auth::AuthError::Pending) | Err(auth::AuthError::SlowDown) => {
-            // AÚN NO autenticado: devolver el pending para el siguiente poll.
+        Err(error @ (auth::AuthError::Pending | auth::AuthError::SlowDown)) => {
             state.auth_gate.publish_pending(epoch, || {
-                *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+                *state.pending.lock().map_err(|_| state_error())? =
+                    Some((attempt_id.clone(), pending));
                 Ok(())
             })?;
-            Err("Waiting for user".into())
+            Err(error.to_string())
         }
-        Err(auth::AuthError::Expired) => {
+        Err(error @ (auth::AuthError::Expired | auth::AuthError::Denied)) => {
             state.auth_gate.publish_pending(epoch, || {
                 *state.pending.lock().map_err(|_| state_error())? = None;
                 Ok(())
             })?;
-            Err("Device code expired; start sign-in again".into())
+            Err(error.to_string())
         }
-        Err(e) => {
-            // Error real (red, OAuth): conservar pending para reintento manual.
+        Err(error) => {
             state.auth_gate.publish_pending(epoch, || {
-                *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+                *state.pending.lock().map_err(|_| state_error())? = Some((attempt_id, pending));
                 Ok(())
             })?;
-            Err(e.to_string())
+            Err(error.to_string())
         }
     }
 }
@@ -897,6 +924,7 @@ pub fn run() {
             begin_login,
             begin_login_window,
             poll_login,
+            cancel_login,
             complete_login,
             persist_session,
             load_session,

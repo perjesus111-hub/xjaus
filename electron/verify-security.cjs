@@ -2,13 +2,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
-const { trustedFrame, externalLoginUrl, allowedCommand } = require('./security.cjs');
+const { trustedFrame, externalLoginUrl, allowedCommand, allowedClipboardText } = require('./security.cjs');
 
 test('IPC rejects subframes, remote pages and arbitrary commands', () => {
   assert.equal(trustedFrame('file:///app/dist/index.html', 'file:///app/dist/index.html', '/app/dist/index.html'), true);
   assert.equal(trustedFrame('https://evil.invalid/', 'file:///app/dist/index.html', '/app/dist/index.html'), false);
   assert.equal(trustedFrame('file:///app/dist/login.html', 'file:///app/dist/index.html', '/app/dist/index.html'), false);
   assert.equal(allowedCommand('auth_status'), true);
+  assert.equal(allowedCommand('cancel_login'), true);
   assert.equal(allowedCommand('get_token'), false);
 });
 test('external link admits only exact donation/repository URLs in addition to device sign-in', () => {
@@ -17,7 +18,13 @@ test('external link admits only exact donation/repository URLs in addition to de
   assert.equal(externalUrl('https://github.com/perjesus111-hub/xjaus'), true);
   for(const value of ['https://github.com/perjesus111-hub/xjaus/','https://github.com/perjesus111-hub/xjaus?x=1','https://github.com/perjesus111-hub/other','http://github.com/perjesus111-hub/xjaus','https://github.com.evil.invalid/perjesus111-hub/xjaus','https://user@github.com/perjesus111-hub/xjaus','https://paypal.me/Comicoon/','https://paypal.me/comicoon','http://paypal.me/Comicoon','https://paypal.me:443/Comicoon','https://paypal.me/Comicoon?amount=1','https://paypal.me/Comicoon#x','https://paypal.me.evil.invalid/Comicoon','https://evil.invalid/?https://paypal.me/Comicoon','https://user@paypal.me/Comicoon',' https://paypal.me/Comicoon',null,{}]) assert.equal(externalUrl(value), false, String(value));
   assert.equal(externalUrl('https://microsoft.com/devicelogin'), true);
-  assert.equal(externalUrl('https://www.microsoft.com/link?otc=fixture'), true);
+  assert.equal(externalLoginUrl('https://microsoft.com/devicelogin'), true);
+  assert.equal(externalLoginUrl('https://www.microsoft.com/link'), true);
+  for (const value of ['http://microsoft.com/devicelogin','https://microsoft.com.evil.invalid/devicelogin','https://user@microsoft.com/devicelogin','https://microsoft.com:443/devicelogin','https://microsoft.com/devicelogin?otc=fixture','https://microsoft.com/devicelogin#fragment','https://microsoft.com/other']) assert.equal(externalLoginUrl(value), false, value);
+  assert.equal(allowedClipboardText('FIXTURE-CODE'), true);
+  assert.equal(allowedClipboardText('https://microsoft.com/devicelogin'), true);
+  assert.equal(allowedClipboardText('https://evil.invalid/'), false);
+  assert.equal(allowedClipboardText('x'.repeat(513)), false);
 });
 test('support preload dispatch reaches only authorized external shell, never app navigation', async () => {
   const handlers=new Map(), opened=[], navigations=[];
@@ -42,6 +49,37 @@ test('support preload dispatch reaches only authorized external shell, never app
 test('external link is restricted to device sign-in', () => {
   assert.equal(externalLoginUrl('https://microsoft.com/devicelogin'), true);
   assert.equal(externalLoginUrl('https://evil.invalid/'), false);
+});
+test('verification and clipboard bridges validate at preload and Electron main', async () => {
+  const handlers = new Map(); const opened = []; const copied = []; const logs = []; let stderrData;
+  const url = 'file:///app/dist/index.html';
+  const wc = { getURL: () => url, setWindowOpenHandler: () => {}, on: () => {} };
+  const win = { webContents: wc, loadFile: () => {} };
+  const backend = { on: () => {}, stdout: { on: () => {} }, stderr: { on: (_event, listener) => stderrData = listener }, exitCode: null, stdin: { writable: true, write: () => {} } };
+  const app = { getPath: () => '/isolated-app-data', setPath: () => {}, setName: () => {}, setAppUserModelId: () => {}, setDesktopName: () => {}, getAppPath: () => '/app', commandLine: { appendSwitch: () => {} }, whenReady: () => ({ then: fn => fn() }), on: () => {} };
+  runInNewContext(readFileSync(require.resolve('./main.cjs'),'utf8'), {
+    process,
+    console: { info: (...args) => logs.push(args), warn: (...args) => logs.push(args), error: (...args) => logs.push(args) },
+    require: name => name === 'electron'
+      ? { app, BrowserWindow: function(){ return win; }, shell: { openExternal: async value => opened.push(value) }, clipboard: { writeText: value => copied.push(value) }, ipcMain: { handle: (key, fn) => handlers.set(key, fn) }, session: { defaultSession: { setPermissionRequestHandler: () => {} } } }
+      : name === 'node:child_process' ? { spawn: () => backend } : require(name),
+    __dirname: '/app/electron',
+  });
+  const frame = { url }; frame.top = frame;
+  const event = { sender: wc, senderFrame: frame };
+  let bridge;
+  runInNewContext(readFileSync(require.resolve('./preload.cjs'),'utf8'), {
+    require: () => ({ contextBridge: { exposeInMainWorld: (_name, value) => bridge = value }, ipcRenderer: { invoke: (channel, ...args) => Promise.resolve().then(() => handlers.get(channel)(event, ...args)) } }),
+  });
+  await bridge.openMicrosoftVerification('https://microsoft.com/devicelogin');
+  await assert.rejects(bridge.openMicrosoftVerification('https://microsoft.com/devicelogin?code=fixture'));
+  await bridge.copyText('FIXTURE-CODE');
+  await assert.rejects(bridge.copyText('https://evil.invalid/'));
+  assert.deepEqual(opened, ['https://microsoft.com/devicelogin']);
+  assert.deepEqual(copied, ['FIXTURE-CODE']);
+  stderrData(Buffer.from('[XJAUS_AUTH] device_code_response_received status=200 duration_ms=12' + String.fromCharCode(10) + '[XJAUS_AUTH] device_code_request_failed category=oauth user_code=PRIVATE-FIXTURE-CODE' + String.fromCharCode(10)));
+  assert.ok(logs.some(entry => entry[0] === '[XJAUS_AUTH] device_code_response_received status=200 duration_ms=12'));
+  assert.ok(!logs.some(entry => JSON.stringify(entry).includes('PRIVATE-FIXTURE-CODE')));
 });
 test('autoplay switch is applied before ready without overriding feature switches', () => {
   const calls=[];
@@ -115,7 +153,7 @@ test('preload exposes only validated fullscreen actions and no generic IPC trans
  runInNewContext(readFileSync(require.resolve('./preload.cjs'),'utf8'),{require:()=>({contextBridge:{exposeInMainWorld:(_name,value)=>bridge=value},ipcRenderer:{invoke:(...args)=>{calls.push(args);return Promise.resolve();}}})});
  await assert.rejects(bridge.fullscreen('setBounds'));assert.equal(calls.length,0);
  await bridge.fullscreen('enter');assert.deepEqual(calls,[['xjaus:fullscreen','enter']]);
- assert.deepEqual(Object.keys(bridge).sort(),['fullscreen','invoke','openExternal']);
+ assert.deepEqual(Object.keys(bridge).sort(),['copyText','fullscreen','invoke','openExternal','openMicrosoftVerification']);
 });
 
 test('authorized quit command is in both allowlists but arbitrary commands remain denied', async()=>{

@@ -17,11 +17,19 @@ use tokio::sync::watch;
 
 pub const INVALIDATED: &str = "Authentication request invalidated by logout";
 const STATE_ERROR: &str = "Authentication state is unavailable";
+fn valid_attempt_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
 
 pub struct AuthGate {
     epoch: AtomicU64,
     signal: watch::Sender<u64>,
     commit: Mutex<()>,
+    active_attempt: Mutex<Option<String>>,
 }
 
 impl Default for AuthGate {
@@ -37,6 +45,7 @@ impl AuthGate {
             epoch: AtomicU64::new(0),
             signal,
             commit: Mutex::new(()),
+            active_attempt: Mutex::new(None),
         }
     }
     /// Lock exclusivo del tramo síncrono de commit/logout.
@@ -50,6 +59,80 @@ impl AuthGate {
     pub fn capture(&self) -> Result<u64, String> {
         let _guard = self.lock_commit()?;
         Ok(self.current())
+    }
+    /// Starts a new renderer-owned login attempt and returns its epoch. A new
+    /// begin always supersedes all previously queued or in-flight auth work.
+    pub fn begin_attempt(&self, attempt_id: &str) -> Result<u64, String> {
+        self.begin_attempt_with(attempt_id, || Ok(()))
+            .map(|(epoch, ())| epoch)
+    }
+    /// Atomically replaces the active attempt and its runner-owned pending data.
+    pub fn begin_attempt_with<T>(
+        &self,
+        attempt_id: &str,
+        replace: impl FnOnce() -> Result<T, String>,
+    ) -> Result<(u64, T), String> {
+        if !valid_attempt_id(attempt_id) {
+            return Err("Invalid login attempt identifier".into());
+        }
+        let _guard = self.lock_commit()?;
+        let epoch = self.invalidate();
+        *self
+            .active_attempt
+            .lock()
+            .map_err(|_| STATE_ERROR.to_owned())? = Some(attempt_id.to_owned());
+        Ok((epoch, replace()?))
+    }
+    /// Captures an epoch only for the currently active attempt. The caller must
+    /// stamp this value before queuing work behind a long-running request.
+    pub fn capture_attempt(&self, attempt_id: &str) -> Result<u64, String> {
+        self.with_attempt(attempt_id, Ok)
+    }
+    /// Runs a short synchronous state operation atomically with attempt check.
+    pub fn with_attempt<T>(
+        &self,
+        attempt_id: &str,
+        operation: impl FnOnce(u64) -> Result<T, String>,
+    ) -> Result<T, String> {
+        if !valid_attempt_id(attempt_id) {
+            return Err("Invalid login attempt identifier".into());
+        }
+        let _guard = self.lock_commit()?;
+        let active = self
+            .active_attempt
+            .lock()
+            .map_err(|_| STATE_ERROR.to_owned())?;
+        if active.as_deref() != Some(attempt_id) {
+            return Err(INVALIDATED.to_owned());
+        }
+        operation(self.current())
+    }
+    /// Cancels only the matching attempt; a stale cancel cannot invalidate a
+    /// newer login started while the old request was still queued.
+    pub fn cancel_attempt(&self, attempt_id: &str) -> Result<bool, String> {
+        self.cancel_attempt_with(attempt_id, || Ok(()))
+    }
+    /// Atomically invalidates a matching attempt and clears its pending state.
+    pub fn cancel_attempt_with(
+        &self,
+        attempt_id: &str,
+        clear_pending: impl FnOnce() -> Result<(), String>,
+    ) -> Result<bool, String> {
+        if !valid_attempt_id(attempt_id) {
+            return Err("Invalid login attempt identifier".into());
+        }
+        let _guard = self.lock_commit()?;
+        let active = self
+            .active_attempt
+            .lock()
+            .map_err(|_| STATE_ERROR.to_owned())?;
+        if active.as_deref() != Some(attempt_id) {
+            return Ok(false);
+        }
+        drop(active);
+        self.invalidate();
+        clear_pending()?;
+        Ok(true)
     }
     /// Suscripción para cancelar trabajo en vuelo (CancellationToken por watch).
     pub fn subscribe(&self) -> watch::Receiver<u64> {
@@ -79,6 +162,9 @@ impl AuthGate {
     pub fn invalidate(&self) -> u64 {
         let next = self.epoch.fetch_add(1, Ordering::SeqCst) + 1;
         self.signal.send_replace(next);
+        if let Ok(mut active) = self.active_attempt.lock() {
+            *active = None;
+        }
         next
     }
     /// Commit bajo gate: revalida el epoch bajo el lock y sólo entonces
@@ -212,6 +298,49 @@ mod tests {
             INVALIDATED
         );
         assert_eq!(*pending.lock().unwrap(), None);
+    }
+
+    #[test]
+    fn queued_old_attempt_cannot_commit_or_publish_after_cancel_and_retry() {
+        let gate = AuthGate::new();
+        let old_epoch = gate.begin_attempt("attempt-old").unwrap();
+        let queued_poll_epoch = gate.capture_attempt("attempt-old").unwrap();
+        assert_eq!(queued_poll_epoch, old_epoch);
+        assert!(gate.cancel_attempt("attempt-old").unwrap());
+        let new_epoch = gate.begin_attempt("attempt-new").unwrap();
+        assert_ne!(new_epoch, old_epoch);
+
+        let persisted = AtomicBool::new(false);
+        assert_eq!(
+            gate.commit(queued_poll_epoch, || {
+                persisted.store(true, Ordering::SeqCst);
+                Ok::<_, String>(())
+            })
+            .unwrap_err(),
+            INVALIDATED,
+        );
+        assert!(!persisted.load(Ordering::SeqCst));
+
+        let published = AtomicBool::new(false);
+        assert_eq!(
+            gate.publish_pending(old_epoch, || {
+                published.store(true, Ordering::SeqCst);
+                Ok::<_, String>(())
+            })
+            .unwrap_err(),
+            INVALIDATED,
+        );
+        assert!(!published.load(Ordering::SeqCst));
+        assert!(gate.capture_attempt("attempt-old").is_err());
+        assert_eq!(gate.capture_attempt("attempt-new").unwrap(), new_epoch);
+    }
+
+    #[test]
+    fn stale_cancel_does_not_invalidate_a_newer_login_attempt() {
+        let gate = AuthGate::new();
+        let epoch = gate.begin_attempt("attempt-new").unwrap();
+        assert!(!gate.cancel_attempt("attempt-old").unwrap());
+        assert_eq!(gate.capture_attempt("attempt-new").unwrap(), epoch);
     }
 
     #[test]

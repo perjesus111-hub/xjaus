@@ -1,4 +1,5 @@
 import { createLoginCode } from './login-code';
+import { createDeviceLoginFlow, isAllowedMicrosoftVerificationUri, type DeviceLoginState } from './device-login-flow';
 import { settleRemoteStop } from './stream-stop';
 import { createConsolePolling } from './console-polling';
 import { createInfiniteCatalog } from './infinite-catalog';
@@ -19,7 +20,7 @@ window.addEventListener('pagehide',()=>controllerPresence.dispose());
 import { CloudLibrary, LIBRARY_FILTERS, filterLibrary, bindSuccessfulCloudPlayback, type LibraryFilter } from './cloud-library';
 import './console-wake';
 import { mountLoadingControls } from './loading-controls';
-import { invokeBackend as invoke, openExternalUrl as openUrl } from "./backend";
+import { invokeBackend as invoke, openExternalUrl as openUrl, openMicrosoftVerificationUrl as openVerificationUrl, copyToClipboard } from "./backend";
 import { normalizeCloudTitles, productIds, type CloudTitle } from "./catalog";
 import { createMetadataQueue } from "./metadata-queue";
 import { gameDisplayName } from './game-name';
@@ -89,10 +90,11 @@ let catalogMetadata: { Products: unknown[] } = { Products: [] };
 let catalogVisible = 24;
 let catalogHydrated = 0;
 let catalogSearchPending = false;
-let loginGeneration = 0;
 let cleanupLoginCode: (() => void) | undefined;
+let loginFlow: ReturnType<typeof createDeviceLoginFlow> | undefined;
+let authInteractionGeneration = 0;
 function disposeLoginCode(): void { cleanupLoginCode?.(); cleanupLoginCode = undefined; }
-window.addEventListener('pagehide', () => { loginGeneration++; disposeLoginCode(); });
+window.addEventListener('pagehide',()=>{loginFlow?.dispose(); disposeLoginCode();});
 let activeTab: Tab = "consoles";
 let loadingCatalog = false;
 let starting = false;
@@ -304,10 +306,8 @@ function showAuth(status: Status): void {
     bindText(indicator,()=>connected ? t('connected') : t('noSession'));
   }
   if (connected) {
-    loginGeneration++;
-    disposeLoginCode();
+    clearLoginFeedback();
     loginFeedback.hidden = true;
-    clearTextBinding(loginFeedback); loginFeedback.replaceChildren();
     setScreen("dashboard");
     switchTab("consoles");
     void profilePanel?.refresh();
@@ -742,47 +742,107 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
   } finally { if (active()) starting = false; }
 }
 
-get<HTMLButtonElement>("btn-login").addEventListener("click", async () => {
-  const generation = ++loginGeneration;
+function clearLoginFeedback(): void {
   disposeLoginCode();
+  for (const node of loginFeedback.querySelectorAll<HTMLElement>('*')) clearTextBinding(node);
+  clearTextBinding(loginFeedback);
+  loginFeedback.replaceChildren();
+}
+
+function renderLoginFlowState(state: DeviceLoginState): void {
+  const loginButton = get<HTMLButtonElement>('btn-login');
+  loginButton.disabled = ['requesting', 'code-available', 'waiting', 'authorized'].includes(state.kind);
+  clearLoginFeedback();
+  if (state.kind === 'idle') { loginFeedback.hidden = true; return; }
   loginFeedback.hidden = false;
-  bindText(loginFeedback,()=>t('requestingCode'));
-  try {
-    const result = await invoke<{user_code: string; verification_uri: string; verification_uri_complete: string; interval: number; expires_in: number}>("begin_login_window");
-    if (generation !== loginGeneration) return;
-    clearTextBinding(loginFeedback); loginFeedback.replaceChildren();
-    const hint = document.createElement("p"); bindText(hint,()=>t('loginCode',{uri:result.verification_uri}));
-    const code = createLoginCode(result.user_code);
-    cleanupLoginCode = code.dispose;
-    const browserButton = cardButton(() => t('openMicrosoft'), () => {
-      void openUrl(result.verification_uri_complete).catch((error) => { notice(() => t('browserError',{error:errorText(error)})); });
-    }, true);
-    const progress = document.createElement("div"); progress.className = "poll-status"; bindText(progress,()=>t('waitingAuthorization'));
-    loginFeedback.append(hint, code.button, code.status, browserButton, progress);
-    const until = Date.now() + result.expires_in * 1000;
-    let interval = Math.max(5000, result.interval * 1000);
-    while (generation === loginGeneration && Date.now() < until) {
-      await new Promise((resolve) => window.setTimeout(resolve, interval));
-      if (generation !== loginGeneration) break;
-      try {
-        const status = await invoke<Status>("poll_login");
-        showAuth(status);
-        return;
-      } catch (error) {
-        const detail = errorText(error);
-        if (detail.includes("slow_down")) interval += 5000;
-        if (detail.includes("expired")) break;
-        bindText(progress,()=>detail.includes("Waiting for user") ? t('waitingAuthorization') : t('retrying',{error:detail}));
+  if (state.kind === 'requesting') { bindText(loginFeedback, () => t('requestingCode')); return; }
+  if (state.kind === 'authorized') {
+    bindText(loginFeedback, () => t('loginAuthorized'));
+    window.setTimeout(() => { if (loginFlow?.state.kind === 'authorized') showAuth(state.status); }, 250);
+    return;
+  }
+  if (state.kind === 'code-available' || state.kind === 'waiting') {
+    const hint = document.createElement('p');
+    bindText(hint, () => t('loginCode', { uri: state.verificationUri }));
+    const code = createLoginCode(state.userCode);
+    let openMessage: 'browserOpenFailed' | 'loginInvalidResponse' | undefined;
+    const openStatus = document.createElement('div');
+    openStatus.setAttribute('role', 'status'); openStatus.setAttribute('aria-live', 'polite');
+    bindText(openStatus, () => openMessage ? t(openMessage) : '');
+    const openButton = cardButton(() => t('openMicrosoft'), () => {
+      if (!isAllowedMicrosoftVerificationUri(state.verificationUri)) {
+        openMessage = 'loginInvalidResponse'; openStatus.textContent = t(openMessage); return;
       }
+      void openVerificationUrl(state.verificationUri).catch(() => {
+        openMessage = 'browserOpenFailed'; openStatus.textContent = t(openMessage);
+      });
+    }, true);
+    let copyMessage: 'verificationLinkCopied' | 'verificationLinkCopyFailed' | 'loginInvalidResponse' | undefined;
+    const copyStatus = document.createElement('div');
+    copyStatus.className = 'copy-code-status'; copyStatus.setAttribute('role', 'status'); copyStatus.setAttribute('aria-live', 'polite');
+    bindText(copyStatus, () => copyMessage ? t(copyMessage) : '');
+    const copyLink = cardButton(() => t('copyVerificationLink'), () => {
+      if (!isAllowedMicrosoftVerificationUri(state.verificationUri)) {
+        copyMessage = 'loginInvalidResponse'; copyStatus.textContent = t(copyMessage); return;
+      }
+      void copyToClipboard(state.verificationUri).then(() => {
+        copyMessage = 'verificationLinkCopied'; copyStatus.textContent = t(copyMessage);
+      }).catch(() => {
+        copyMessage = 'verificationLinkCopyFailed'; copyStatus.textContent = t(copyMessage);
+      });
+    }, true);
+    const progress = document.createElement('div'); progress.className = 'poll-status';
+    bindText(progress, () => t(state.kind === 'code-available' ? 'codeAvailable' : 'waitingAuthorization'));
+    const cancel = cardButton(() => t('cancelLogin'), () => { void loginFlow?.cancel(); }, true);
+    cancel.dataset.loginAction = 'cancel';
+    loginFeedback.append(hint, code.button, code.status, openButton, openStatus, copyLink, copyStatus, progress, cancel);
+    cleanupLoginCode = code.dispose;
+    return;
+  }
+  if (state.kind === 'error' || state.kind === 'expired' || state.kind === 'denied' || state.kind === 'cancelled') {
+    const message = document.createElement('p');
+    const key = state.kind === 'expired' ? 'expiredCode'
+      : state.kind === 'denied' ? 'loginDenied'
+      : state.kind === 'cancelled' ? 'loginCancelled'
+      : state.reason === 'timeout' ? 'loginTimeout'
+      : state.reason === 'invalid-response' ? 'loginInvalidResponse'
+      : 'loginRecoverableError';
+    bindText(message, () => t(key));
+    loginFeedback.append(message);
+    if (state.kind !== 'cancelled') {
+      const retry = cardButton(() => t('retryLogin'), () => { void loginFlow?.retry(); }, true);
+      retry.dataset.loginAction = 'retry';
+      loginFeedback.append(retry);
+      const cancel = cardButton(() => t('cancelLogin'), () => { void loginFlow?.cancel(); }, true);
+      cancel.dataset.loginAction = 'cancel';
+      loginFeedback.append(cancel);
     }
-    if (generation === loginGeneration) { disposeLoginCode(); code.button.disabled = true; bindText(progress,()=>t('expiredCode')); }
-  } catch (error) { if (generation === loginGeneration) { disposeLoginCode(); bindText(loginFeedback,()=>t('genericError',{error:errorText(error)})); } }
+  }
+}
+
+loginFlow = createDeviceLoginFlow({
+  begin: attemptId => invoke<{ user_code: string; verification_uri?: string; expires_in: number; interval?: number }>('begin_login_window', { attemptId }),
+  poll: attemptId => invoke<Status>('poll_login', { attemptId }),
+  cancel: attemptId => invoke<void>('cancel_login', { attemptId }),
+}, renderLoginFlowState);
+
+get<HTMLButtonElement>('btn-login').addEventListener('click', () => {
+  authInteractionGeneration++;
+  void loginFlow?.start();
 });
-get<HTMLButtonElement>("manual-login").addEventListener("click", async () => {
-  loginGeneration++;
-  disposeLoginCode();
-  try { showAuth(await invoke<Status>("load_session")); }
-  catch (error) { loginFeedback.hidden = false; clearTextBinding(loginFeedback); loginFeedback.textContent = errorText(error); }
+get<HTMLButtonElement>('manual-login').addEventListener('click', async () => {
+  const generation = ++authInteractionGeneration;
+  if (loginFlow && ['requesting', 'code-available', 'waiting', 'error'].includes(loginFlow.state.kind)) {
+    const cancelled = await loginFlow.cancel();
+    if (!cancelled || generation !== authInteractionGeneration) return;
+  }
+  try {
+    const status = await invoke<Status>('load_session');
+    if (generation === authInteractionGeneration) showAuth(status);
+  } catch (error) {
+    if (generation !== authInteractionGeneration) return;
+    loginFeedback.hidden = false; clearLoginFeedback(); loginFeedback.textContent = errorText(error);
+  }
 });
 for (const tab of ["home", "consoles", "cloud", "settings"] as const) {
   document.querySelector<HTMLButtonElement>(`button[data-action="${tab}"]`)?.addEventListener("click", () => {
@@ -911,7 +971,15 @@ get<HTMLButtonElement>('copy-diagnostics').addEventListener('click', async () =>
   catch { notice(() => t('diagnosticsCopyFailed')); }
 });
 get<HTMLButtonElement>("stop-stream").addEventListener("click", () => { void stopGame(); });
-void settingsReady.then(() => invoke<Status>("auth_status")).then(showAuth).catch((error) => notice(() => t('sessionStatus',{error:errorText(error)})));
+const startupAuthGeneration = authInteractionGeneration;
+void settingsReady.then(() => invoke<Status>("auth_status")).then(status => {
+  if (authInteractionGeneration !== startupAuthGeneration || loginFlow?.state.kind !== 'idle') return;
+  showAuth(status);
+}).catch(error => {
+  if (authInteractionGeneration === startupAuthGeneration && loginFlow?.state.kind === 'idle') {
+    notice(() => t('sessionStatus',{error:errorText(error)}));
+  }
+});
 
 function updateStreamLabels() {
  syncRangeFill(get<HTMLInputElement>('stream-bitrate'));
