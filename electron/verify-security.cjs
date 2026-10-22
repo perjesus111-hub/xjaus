@@ -3,6 +3,14 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const { trustedFrame, externalLoginUrl, allowedCommand, allowedClipboardText } = require('./security.cjs');
+const { systemLocaleFromEnvironment } = require('./locale.cjs');
+
+test('system locale mapping preserves the configured regional preference and precedence', () => {
+  assert.equal(systemLocaleFromEnvironment({ LC_ALL: '', LC_MESSAGES: 'es_ES.UTF-8', LANG: 'en_US.UTF-8' }), 'es-ES');
+  assert.equal(systemLocaleFromEnvironment({ LC_ALL: 'en_GB.UTF-8', LC_MESSAGES: 'es_MX.UTF-8', LANG: 'es_MX.UTF-8' }), 'en-GB');
+  assert.equal(systemLocaleFromEnvironment({ LC_ALL: 'C.UTF-8', LANG: 'es_MX.UTF-8' }), 'en-US');
+  assert.equal(systemLocaleFromEnvironment({ LANG: 'fr_FR.UTF-8' }), 'fr-FR');
+});
 
 test('IPC rejects subframes, remote pages and arbitrary commands', () => {
   assert.equal(trustedFrame('file:///app/dist/index.html', 'file:///app/dist/index.html', '/app/dist/index.html'), true);
@@ -85,8 +93,9 @@ test('autoplay switch is applied before ready without overriding feature switche
   const calls=[];
   const source=readFileSync(require.resolve('./main.cjs'),'utf8');
   const app={getPath:()=>'/isolated-app-data',setPath:()=>{},setName:()=>{},setAppUserModelId:()=>{},setDesktopName:()=>{},getAppPath:()=>'/app',commandLine:{appendSwitch:(...args)=>calls.push(args)},whenReady:()=>{calls.push(['ready']);return {then:()=>{}}},on:()=>{}};
-  runInNewContext(source,{process,require:(name)=>name==='electron'?{app,ipcMain:{handle:()=>{}}}:require(name),__dirname});
-  assert.deepEqual(calls[0],['lang','es-MX']);
+  const testProcess = { ...process, env: { ...process.env, LC_ALL: '', LC_MESSAGES: '', LANG: 'es_ES.UTF-8' } };
+  runInNewContext(source,{process:testProcess,require:(name)=>name==='electron'?{app,ipcMain:{handle:()=>{}}}:require(name),__dirname});
+  assert.deepEqual(calls[0],['lang','es-ES']);
   assert.ok(calls.findIndex(c=>c[0]==='autoplay-policy') < calls.findIndex(c=>c[0]==='ready'));
   if(process.platform==='linux') assert.deepEqual(calls.find(c=>c[0]==='enable-features'),['enable-features','VaapiVideoDecoder,VaapiIgnoreDriverChecks']);
 });

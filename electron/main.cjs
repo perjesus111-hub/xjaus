@@ -3,16 +3,17 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { allowedCommand, trustedFrame, externalUrl, externalLoginUrl, allowedClipboardText } = require('./security.cjs');
+const { systemLocaleFromEnvironment } = require('./locale.cjs');
 
 const { iconPath } = require('./icons.cjs');
 app.setName('XJAUS');
 app.setAppUserModelId('io.github.xjaus.xjaus');
 // Isolated namespace: no automatic import or removal of previous app data.
 app.setPath('userData', path.join(app.getPath('appData'), 'io.github.xjaus.xjaus'));
-// Follow the OS language; only force a locale when the environment explicitly says Spanish.
-// Otherwise let Chromium detect the system language on its own (never default to Spanish).
-const systemLang = [process.env.LANG, process.env.LC_ALL, process.env.LC_MESSAGES].filter(Boolean).join(':');
-if (systemLang && systemLang.toLowerCase().includes('es')) app.commandLine.appendSwitch('lang', 'es-MX');
+// Follow the OS message locale as a language preference; preserve its exact
+// locale region without using it to mutate the Xbox account or market region.
+const systemLocale = systemLocaleFromEnvironment(process.env);
+if (systemLocale) app.commandLine.appendSwitch('lang', systemLocale);
 if (process.platform === 'linux') {
   app.setDesktopName('io.github.xjaus.xjaus.desktop');
   app.commandLine.appendSwitch('class', 'io.github.xjaus.xjaus');
@@ -146,7 +147,7 @@ ipcMain.handle('xjaus:clipboard', (event, text) => {
   return true;
 });
 app.whenReady().then(() => {
-  console.info('[XJAUS locale]', JSON.stringify({locale: app.getLocale?.(), requested: systemLang || 'auto', LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES}));
+  console.info('[XJAUS locale]', JSON.stringify({locale: app.getLocale?.(), requested: systemLocale || 'auto', LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES}));
   startBackend();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   window = new BrowserWindow({

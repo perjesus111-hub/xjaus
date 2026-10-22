@@ -1,5 +1,5 @@
 import { t, bindText } from './i18n';
-export type StreamStart = { kind: "home" | "cloud"; target: string; profile: Record<string, unknown> | null };
+export type StreamStart = { kind: "home" | "cloud"; target: string; profile: Record<string, unknown> | null; streamingLocale?: string };
 type Provisioned = { state?: string; provisioning?: Record<string, number> | null };
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 

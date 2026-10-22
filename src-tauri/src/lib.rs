@@ -704,10 +704,12 @@ async fn list_gamepass_catalog(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StreamStartArgs {
     kind: SessionKind,
     target: String,
     profile: Option<DeviceProfilePatch>,
+    streaming_locale: Option<String>,
 }
 
 fn take_stream(state: &State<'_, AppState>) -> Result<SessionClient, String> {
@@ -754,15 +756,9 @@ async fn start_stream(
     };
     let host = region_host(stream_token)?;
     let token = token_text(stream_token, "gsToken")?;
-    let mut stream = SessionClient::new(
-        state.client.clone(),
-        host,
-        token,
-        args.kind,
-        args.profile
-            .map(DeviceProfilePatch::apply)
-            .unwrap_or_default(),
-    );
+    let profile =
+        session::profile_for_stream(args.kind, args.profile, args.streaming_locale.as_deref())?;
+    let mut stream = SessionClient::new(state.client.clone(), host, token, args.kind, profile);
     stream.set_account_scope(account_scope::catalog_account_scope(&bundle.web_token))?;
     // Ambos modos exigen lpt para el POST /connect en ReadyToConnect:
     // - Home: xhome (Remote Play). - Cloud: MSAL token auditado en xcloudapi.ts.
@@ -951,4 +947,37 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod stream_start_locale_tests {
+    use super::*;
+
+    #[test]
+    fn tauri_start_args_deserialize_streaming_locale_as_a_separate_cloud_preference() {
+        for requested in ["en-US", "es-MX", "en-GB"] {
+            let args = serde_json::from_value::<StreamStartArgs>(serde_json::json!({
+                "kind": "cloud",
+                "target": "title-fixture",
+                "profile": {"width": 2560},
+                "streamingLocale": requested
+            }))
+            .unwrap();
+            assert_eq!(args.streaming_locale.as_deref(), Some(requested));
+            let profile = session::profile_for_stream(
+                args.kind,
+                args.profile,
+                args.streaming_locale.as_deref(),
+            )
+            .unwrap();
+            assert_eq!(profile.locale, requested);
+            assert_eq!(
+                profile
+                    .play_payload(SessionKind::Cloud, "title-fixture")
+                    .pointer("/settings/market")
+                    .and_then(serde_json::Value::as_str),
+                Some("ES-MX")
+            );
+        }
+    }
 }

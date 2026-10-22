@@ -31,6 +31,81 @@ impl SessionKind {
     }
 }
 
+/// The session body's legacy market field is private/undocumented in the
+/// public Xbox GDK docs. Keep its existing value independent of language.
+pub const LEGACY_STREAM_MARKET: &str = "ES-MX";
+
+/// Canonicalize a BCP-47 language tag at the backend boundary. Language-only
+/// English/Spanish values use the established Xbox locales; other tags keep
+/// their requested language/region and never alter market/account settings.
+pub fn normalize_stream_locale(input: &str) -> Result<String, String> {
+    let input = input.trim();
+    if input.is_empty() || input.len() > 63 || !input.is_ascii() {
+        return Err("Cloud streaming locale is invalid".into());
+    }
+    let parts: Vec<&str> = input.split('-').collect();
+    let language = parts[0];
+    if !(2..=8).contains(&language.len()) || !language.bytes().all(|b| b.is_ascii_alphabetic()) {
+        return Err("Cloud streaming locale is invalid".into());
+    }
+    let language = language.to_ascii_lowercase();
+    if language == "und" {
+        return Err("Cloud streaming locale is invalid".into());
+    }
+    if parts.len() == 1 {
+        return Ok(match language.as_str() {
+            "en" => "en-US".into(),
+            "es" => "es-MX".into(),
+            _ => language,
+        });
+    }
+    if language == "es" && parts.get(1).is_some_and(|part| *part == "419") {
+        return Ok("es-MX".into());
+    }
+    let mut canonical = vec![language];
+    for part in parts.iter().skip(1) {
+        if part.is_empty() || part.len() > 8 || !part.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err("Cloud streaming locale is invalid".into());
+        }
+        let value = if part.len() == 2 && part.bytes().all(|b| b.is_ascii_alphabetic()) {
+            part.to_ascii_uppercase()
+        } else if part.len() == 4 && part.bytes().all(|b| b.is_ascii_alphabetic()) {
+            let mut chars = part.to_ascii_lowercase().chars().collect::<Vec<_>>();
+            chars[0] = chars[0].to_ascii_uppercase();
+            chars.into_iter().collect()
+        } else {
+            part.to_ascii_lowercase()
+        };
+        canonical.push(value);
+    }
+    Ok(canonical.join("-"))
+}
+
+/// Apply only the Cloud session's requested locale. Home/Remote Play keeps its
+/// prior default; the cloud market field is deliberately never derived here.
+pub fn apply_cloud_stream_locale(
+    kind: SessionKind,
+    profile: &mut DeviceProfile,
+    requested: Option<&str>,
+) -> Result<(), String> {
+    if kind == SessionKind::Cloud {
+        profile.locale = normalize_stream_locale(requested.unwrap_or("es-MX"))?;
+    }
+    Ok(())
+}
+
+/// Build the standard HTTP language preference list from the requested locale.
+pub fn session_accept_language(locale: &str) -> String {
+    let locale = normalize_stream_locale(locale).unwrap_or_else(|_| "es-MX".into());
+    let language = locale.split('-').next().unwrap_or("es");
+    let secondary = if language == "en" { "es" } else { "en" };
+    if locale.eq_ignore_ascii_case(language) {
+        format!("{locale}, {secondary};q=0.1")
+    } else {
+        format!("{locale}, {language};q=0.9, {secondary};q=0.1")
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DeviceProfile {
     pub client_app_id: String,
@@ -96,7 +171,6 @@ pub struct DeviceProfilePatch {
     pub height: Option<u32>,
     pub dpi_x: Option<u32>,
     pub dpi_y: Option<u32>,
-    pub locale: Option<String>,
     pub timezone_offset_minutes: Option<i32>,
     pub nano_version: Option<String>,
     pub use_ice_connection: Option<bool>,
@@ -126,12 +200,21 @@ impl DeviceProfilePatch {
         set!(height);
         set!(dpi_x);
         set!(dpi_y);
-        set!(locale);
         set!(timezone_offset_minutes);
         set!(nano_version);
         set!(use_ice_connection);
         profile
     }
+}
+
+pub fn profile_for_stream(
+    kind: SessionKind,
+    patch: Option<DeviceProfilePatch>,
+    requested_locale: Option<&str>,
+) -> Result<DeviceProfile, String> {
+    let mut profile = patch.map(DeviceProfilePatch::apply).unwrap_or_default();
+    apply_cloud_stream_locale(kind, &mut profile, requested_locale)?;
+    Ok(profile)
 }
 
 impl DeviceProfile {
@@ -150,7 +233,7 @@ impl DeviceProfile {
         json!({
             "titleId": if kind == SessionKind::Cloud { target } else { "" }, "clientSessionId": "",
             "settings": { "nanoVersion": self.nano_version, "enableTextToSpeech": false, "highContrast": 0,
-                "locale": self.locale, "market": self.locale.to_ascii_uppercase(), "useIceConnection": self.use_ice_connection, "timezoneOffsetMinutes": self.timezone_offset_minutes,
+                "locale": self.locale, "market": LEGACY_STREAM_MARKET, "useIceConnection": self.use_ice_connection, "timezoneOffsetMinutes": self.timezone_offset_minutes,
                 "sdkType": "web", "osName": "windows" },
             "serverId": if kind == SessionKind::Home { target } else { "" }, "fallbackRegionNames": []
         })
@@ -666,7 +749,10 @@ impl SessionClient {
             .request(method, url)
             .bearer_auth(self.token.as_str())
             .header("Content-Type", "application/json")
-            .header("Accept-Language", "es-MX, es;q=0.9, en;q=0.1");
+            .header(
+                "Accept-Language",
+                session_accept_language(&self.profile.locale),
+            );
         if device_info {
             request = request.header(
                 "X-MS-Device-Info",
@@ -1846,7 +1932,7 @@ mod tests {
         );
     }
     #[test]
-    fn cloud_play_request_sends_spanish_accept_language_header() {
+    fn cloud_play_request_uses_english_accept_language_when_english_is_requested() {
         tauri::async_runtime::block_on(async {
             use std::io::{Read, Write};
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1876,7 +1962,7 @@ mod tests {
                 DeviceProfile::default(),
             );
             stream.test_base_url = Some(endpoint);
-            stream.profile.locale = "es-MX".into();
+            stream.profile = profile_for_stream(SessionKind::Cloud, None, Some("en-US")).unwrap();
             stream.set_account_scope(Some("a".repeat(64))).unwrap();
             stream.host = "fixture.gssv-play-prod.xboxlive.com".into();
             let root = std::env::var_os("HOME")
@@ -1892,7 +1978,7 @@ mod tests {
                 server
                     .join()
                     .unwrap()
-                    .contains("accept-language: es-mx, es;q=0.9, en;q=0.1")
+                    .contains("accept-language: en-us, en;q=0.9, es;q=0.1")
             );
             let _ = std::fs::remove_dir_all(root);
         });
@@ -1900,14 +1986,16 @@ mod tests {
 
     #[test]
     fn cloud_payload_selects_title_not_server() {
-        let payload = DeviceProfile::default().play_payload(SessionKind::Cloud, "title-123");
+        let mut profile = DeviceProfile::default();
+        profile.locale = "en-US".into();
+        let payload = profile.play_payload(SessionKind::Cloud, "title-123");
         assert_eq!(
             payload.pointer("/titleId").and_then(Value::as_str),
             Some("title-123")
         );
         assert_eq!(
             payload.pointer("/settings/locale").and_then(Value::as_str),
-            Some("es-MX")
+            Some("en-US")
         );
         assert!(payload.pointer("/systemUpdateGroup").is_none());
         assert_eq!(
@@ -1924,5 +2012,59 @@ mod tests {
             payload.pointer("/serverId").and_then(Value::as_str),
             Some("")
         );
+    }
+
+    #[test]
+    fn requested_cloud_locales_are_normalized_without_changing_market_or_home() {
+        for (input, expected) in [
+            ("en", "en-US"),
+            ("EN-us", "en-US"),
+            ("es", "es-MX"),
+            ("es-419", "es-MX"),
+            ("es-ES", "es-ES"),
+            ("en-GB", "en-GB"),
+        ] {
+            let mut profile = DeviceProfile::default();
+            apply_cloud_stream_locale(SessionKind::Cloud, &mut profile, Some(input)).unwrap();
+            assert_eq!(profile.locale, expected);
+            let payload = profile.play_payload(SessionKind::Cloud, "title-123");
+            assert_eq!(
+                payload.pointer("/settings/locale").and_then(Value::as_str),
+                Some(expected)
+            );
+            assert_eq!(
+                payload.pointer("/settings/market").and_then(Value::as_str),
+                Some("ES-MX")
+            );
+        }
+        let mut home = DeviceProfile::default();
+        apply_cloud_stream_locale(SessionKind::Home, &mut home, Some("en-US")).unwrap();
+        assert_eq!(home.locale, "es-MX");
+    }
+
+    #[test]
+    fn invalid_cloud_locale_is_rejected_and_accept_language_follows_requested_locale() {
+        let mut profile = DeviceProfile::default();
+        assert!(
+            apply_cloud_stream_locale(
+                SessionKind::Cloud,
+                &mut profile,
+                Some("en-US\r\nX-Evil: yes")
+            )
+            .is_err()
+        );
+        assert_eq!(
+            session_accept_language("en-US"),
+            "en-US, en;q=0.9, es;q=0.1"
+        );
+        assert_eq!(
+            session_accept_language("es-MX"),
+            "es-MX, es;q=0.9, en;q=0.1"
+        );
+        assert_eq!(
+            session_accept_language("en-GB"),
+            "en-GB, en;q=0.9, es;q=0.1"
+        );
+        assert_eq!(session_accept_language("fr"), "fr, en;q=0.1");
     }
 }

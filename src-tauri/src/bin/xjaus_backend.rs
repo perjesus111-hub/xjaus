@@ -90,6 +90,16 @@ fn allowed_command(name: &str) -> bool {
     COMMANDS.contains(&name)
 }
 
+fn stream_locale_from_args(args: &Value) -> Result<Option<&str>, String> {
+    args.get("streamingLocale")
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| "Locale de streaming inválido".to_owned())
+        })
+        .transpose()
+}
+
 #[derive(Default)]
 struct KeepaliveGate(AtomicBool);
 impl KeepaliveGate {
@@ -526,14 +536,14 @@ impl Backend {
                     .and_then(Value::as_str)
                     .filter(|s| !s.is_empty())
                     .ok_or("Falta la consola o el título")?;
-                let profile = start
+                let profile_patch = start
                     .get("profile")
                     .filter(|v| !v.is_null())
                     .map(|v| serde_json::from_value::<DeviceProfilePatch>(v.clone()))
                     .transpose()
-                    .map_err(|_| "Perfil de dispositivo inválido")?
-                    .map(DeviceProfilePatch::apply)
-                    .unwrap_or_default();
+                    .map_err(|_| "Perfil de dispositivo inválido")?;
+                let streaming_locale = stream_locale_from_args(start)?;
+                let profile = session::profile_for_stream(kind, profile_patch, streaming_locale)?;
                 let token = self.streaming_token(kind)?;
                 let host = region_host(token)?;
                 let bearer = text_field(token, "gsToken")?;
@@ -843,6 +853,29 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sidecar_start_stream_parses_requested_locale_separately_from_profile() {
+        let start = json!({
+            "streamingLocale": "en-US",
+            "profile": {"width": 2560, "locale": "es-MX"}
+        });
+        let locale = stream_locale_from_args(&start).unwrap();
+        let patch = serde_json::from_value::<DeviceProfilePatch>(start["profile"].clone()).unwrap();
+        let profile = session::profile_for_stream(SessionKind::Cloud, Some(patch), locale).unwrap();
+        assert_eq!(profile.locale, "en-US");
+        assert_eq!(
+            profile
+                .play_payload(SessionKind::Cloud, "title")
+                .pointer("/settings/market")
+                .and_then(Value::as_str),
+            Some("ES-MX")
+        );
+
+        let home = session::profile_for_stream(SessionKind::Home, None, Some("en-US")).unwrap();
+        assert_eq!(home.locale, "es-MX");
+        assert!(stream_locale_from_args(&json!({"streamingLocale": 123})).is_err());
+    }
+
     #[test]
     fn queued_old_attempt_and_stale_cancel_cannot_adopt_or_invalidate_a_retry() {
         let gate = auth_gate::AuthGate::new();

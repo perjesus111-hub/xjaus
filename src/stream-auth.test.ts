@@ -11,7 +11,7 @@ describe("expired MSA transfer token recovery", () => {
       if (cmd === "provision_stream" && ++provisions === 1) throw new Error(expired);
       return { state: "Provisioned" } as T;
     };
-    const args = { kind: "cloud" as const, target: "1000XRESIST", profile: { width: 2560 } };
+    const args = { kind: "cloud" as const, target: "1000XRESIST", profile: { width: 2560 }, streamingLocale: "en-US" };
     expect(await provisionWithFreshAuth(invoke, args)).toEqual({ state: "Provisioned" });
     expect(calls.map(([cmd]) => cmd)).toEqual(["start_stream", "provision_stream", "stop_stream", "start_stream", "provision_stream"]);
     expect(calls[0][1]).toEqual({ args });
