@@ -37,7 +37,7 @@ Captured from the packaged Electron AppImage on Linux (XJAUS 1.2.0). Account det
 
 ## Packages
 
-Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS EXE installer and an MSI installer for Windows x64**. The Windows installers are local 1.2.1 build artifacts; the EXE and MSI received smoke testing under Wine only, are unsigned, and have not been verified on native Windows. Download packages only from this repository's published GitHub Releases once available. Do not use older Tauri bundles as substitutes for the Electron release.
+Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS EXE installer and an MSI installer for Windows x64**. The [XJAUS 1.2.1 GitHub Release page](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1) will host the downloads when publication is complete. Do not use older Tauri bundles as substitutes for the Electron release.
 
 ### AppImage
 
@@ -67,7 +67,7 @@ The Windows build produces both an **NSIS EXE** and an **MSI** installer:
 - `XJAUS-*-win-x64-setup.exe` — NSIS bootstrap (32-bit); installs the x64 application.
 - `XJAUS-*-win-x64-setup.msi` — per-user MSI package.
 
-Both bundle the Rust sidecar, so no separate backend download is required. These 1.2.1 packages are local candidates: smoke-tested under Wine only, unsigned, and not yet tested on native Windows. Do not treat them as published or production-certified installers.
+Both bundle the Rust sidecar, so no separate backend download is required. The Windows installers are unsigned and were smoke-tested under Wine only; they have not been verified on native Windows. Do not treat them as natively validated Windows installers.
 
 Launch XJAUS from your application menu after installation. Packaging support is not certification that every Linux distribution or SteamOS version has been tested.
 
