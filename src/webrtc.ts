@@ -1,5 +1,6 @@
-import { LocalizedError } from './i18n';
+import { LocalizedError, i18n } from './i18n';
 import { provisionWithFreshAuth } from "./stream-auth";
+import { resolveCloudStreamingLocale } from './streaming-locale';
 import { invokeBackend as invoke } from "./backend";
 import { XboxGamepadInput } from "./gamepad";
 import { GamePlayback } from "./playback";
@@ -443,7 +444,15 @@ export class XboxSessionCoordinator {
       return result;
     };
     const reportError = (error: unknown) => { if (!this.stopped && !isExpectedSessionEnd(error)) this.onIceError(error); };
-    const provisioned = await provisionWithFreshAuth(request, { kind, target, profile: profile ?? null });
+    const streamingLocale = kind === "cloud"
+      ? resolveCloudStreamingLocale(i18n.preference, navigator.languages, navigator.language)
+      : undefined;
+    const provisioned = await provisionWithFreshAuth(request, {
+      kind,
+      target,
+      profile: profile ?? null,
+      ...(streamingLocale ? { streamingLocale } : {}),
+    });
     if (this.onProgress) {
       this.onProgress({ state: String(provisioned?.state ?? ""), queue: provisioned?.provisioning ?? undefined });
     }

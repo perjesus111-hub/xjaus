@@ -1,18 +1,19 @@
-const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, clipboard } = require('electron');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
-const { allowedCommand, trustedFrame, externalUrl } = require('./security.cjs');
+const { allowedCommand, trustedFrame, externalUrl, externalLoginUrl, allowedClipboardText } = require('./security.cjs');
+const { systemLocaleFromEnvironment } = require('./locale.cjs');
 
 const { iconPath } = require('./icons.cjs');
 app.setName('XJAUS');
 app.setAppUserModelId('io.github.xjaus.xjaus');
 // Isolated namespace: no automatic import or removal of previous app data.
 app.setPath('userData', path.join(app.getPath('appData'), 'io.github.xjaus.xjaus'));
-// Follow the OS language; only force a locale when the environment explicitly says Spanish.
-// Otherwise let Chromium detect the system language on its own (never default to Spanish).
-const systemLang = [process.env.LANG, process.env.LC_ALL, process.env.LC_MESSAGES].filter(Boolean).join(':');
-if (systemLang && systemLang.toLowerCase().includes('es')) app.commandLine.appendSwitch('lang', 'es-MX');
+// Follow the OS message locale as a language preference; preserve its exact
+// locale region without using it to mutate the Xbox account or market region.
+const systemLocale = systemLocaleFromEnvironment(process.env);
+if (systemLocale) app.commandLine.appendSwitch('lang', systemLocale);
 if (process.platform === 'linux') {
   app.setDesktopName('io.github.xjaus.xjaus.desktop');
   app.commandLine.appendSwitch('class', 'io.github.xjaus.xjaus');
@@ -31,7 +32,14 @@ let backend;
 let window;
 let sequence = 0;
 let stdoutBuffer = '';
+let stderrBuffer = '';
 const pending = new Map();
+const authIpcTimeouts = new Map([['begin_login_window', 20_000], ['poll_login', 90_000], ['cancel_login', 8_000]]);
+function logAuthIpc(command, stage, id, startedAt, category) {
+  const record = { command, stage, request_id: id, elapsed_ms: Math.max(0, Date.now() - startedAt) };
+  if (category) record.category = category;
+  console.info('[XJAUS auth IPC]', JSON.stringify(record));
+}
 const frontend = path.resolve(__dirname, '../dist/index.html');
 const backendPath = require('./backend-path.cjs').backendPath({
   isPackaged: app.isPackaged, resourcesPath: process.resourcesPath,
@@ -43,7 +51,7 @@ function stopPending(reason) {
 }
 function startBackend() {
   backend = spawn(backendPath, [], { stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true });
-  backend.on('error', (error) => stopPending(`No se pudo iniciar el backend Rust: ${error.message}`));
+  backend.on('error', () => stopPending('Rust backend failed to start'));
   backend.on('close', () => stopPending('El backend Rust se cerró'));
   backend.stdout.on('data', (chunk) => {
     stdoutBuffer += chunk.toString('utf8');
@@ -55,12 +63,19 @@ function startBackend() {
       try { reply = JSON.parse(line); } catch { continue; }
       const item = pending.get(reply.id);
       if (!item) continue;
-      pending.delete(reply.id);
       if (typeof reply.error === 'string') item.reject(new Error(reply.error));
       else item.resolve(reply.result);
     }
   });
-  backend.stderr.on('data', () => { /* Never forward diagnostics or credentials to renderer. */ });
+  backend.stderr.on('data', (chunk) => {
+    stderrBuffer += chunk.toString('utf8');
+    if (stderrBuffer.length > 8_192) stderrBuffer = stderrBuffer.slice(-4_096);
+    for (let index; (index = stderrBuffer.indexOf('\n')) !== -1;) {
+      const line = stderrBuffer.slice(0, index).trim();
+      stderrBuffer = stderrBuffer.slice(index + 1);
+      if (/^\[XJAUS_AUTH\] (?:device_code_request_started|device_code_response_received status=\d{3} duration_ms=\d{1,8}|device_code_response_invalid category=(?:json|schema|url)|device_code_request_failed category=(?:timeout|network|http|oauth)|device_code_poll (?:pending|slow_down|expired|denied|authorized)(?: interval_seconds=\d{1,6})?)$/.test(line)) console.info(line);
+    }
+  });
 }
 function authorize(event) {
   return event.sender === window?.webContents && event.senderFrame === event.senderFrame?.top
@@ -74,6 +89,7 @@ ipcMain.handle('xjaus:invoke', (event, command, args) => {
     return null;
   }
   const id = ++sequence;
+  const startedAt = Date.now();
   const message = JSON.stringify({ id, cmd: command, args: args ?? {} });
   if (message.length > 2_000_000) throw new Error('Petición IPC demasiado grande');
   if (!backend || backend.exitCode !== null || !backend.stdin.writable) throw new Error('Backend Rust no disponible');
@@ -83,9 +99,33 @@ ipcMain.handle('xjaus:invoke', (event, command, args) => {
     window.webContents.focus();
   }
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    backend.stdin.write(`${message}\n`, (error) => {
-      if (error) { const item = pending.get(id); pending.delete(id); item?.reject(error); }
+    let settled = false;
+    let timer;
+    const isAuth = authIpcTimeouts.has(command);
+    const finish = (fn, value, category) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      pending.delete(id);
+      if (isAuth) logAuthIpc(command, fn === resolve ? 'response_received' : 'request_failed', id, startedAt, category);
+      fn(value);
+    };
+    const item = {
+      resolve: value => finish(resolve, value),
+      reject: error => finish(reject, error, error?.name === 'TimeoutError' ? 'timeout' : 'backend_error'),
+    };
+    pending.set(id, item);
+    const timeoutMs = authIpcTimeouts.get(command);
+    if (timeoutMs) {
+      logAuthIpc(command, 'request_sent', id, startedAt);
+      timer = setTimeout(() => {
+        const error = new Error('Microsoft sign-in request timed out');
+        error.name = 'TimeoutError';
+        item.reject(error);
+      }, timeoutMs);
+    }
+    backend.stdin.write(`${message}${String.fromCharCode(10)}`, error => {
+      if (error) item.reject(new Error('Backend IPC write failed'));
     });
   });
 });
@@ -97,8 +137,17 @@ ipcMain.handle('xjaus:open-external', async (event, url) => {
   if (!authorize(event) || !externalUrl(url)) throw new Error('Enlace externo no permitido');
   await shell.openExternal(url);
 });
+ipcMain.handle('xjaus:open-microsoft-verification', async (event, url) => {
+  if (!authorize(event) || !externalLoginUrl(url)) throw new Error('Enlace de verificación no permitido');
+  await shell.openExternal(url);
+});
+ipcMain.handle('xjaus:clipboard', (event, text) => {
+  if (!authorize(event) || !allowedClipboardText(text)) throw new Error('Texto para copiar no permitido');
+  clipboard.writeText(text);
+  return true;
+});
 app.whenReady().then(() => {
-  console.info('[XJAUS locale]', JSON.stringify({locale: app.getLocale?.(), requested: systemLang || 'auto', LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES}));
+  console.info('[XJAUS locale]', JSON.stringify({locale: app.getLocale?.(), requested: systemLocale || 'auto', LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES}));
   startBackend();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   window = new BrowserWindow({

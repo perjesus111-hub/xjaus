@@ -1,4 +1,5 @@
 import { i18n, t } from './i18n';
+import { copyToClipboard } from './backend';
 
 /** Own the backend-provided pairing code, never a displayed placeholder. */
 export function createLoginCode(value: unknown) {
@@ -30,7 +31,7 @@ export function createLoginCode(value: unknown) {
     feedback = undefined;
     render();
     try {
-      await navigator.clipboard.writeText(code);
+      await copyToClipboard(code);
       if (!disposed) feedback = 'copiedCode';
     } catch {
       // Do not expose native clipboard errors or the code in diagnostics.

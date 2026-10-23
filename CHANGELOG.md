@@ -4,6 +4,28 @@ All notable changes to XJAUS are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - Unreleased
+
+### Added
+
+- English and Spanish interface preferences now select a corresponding Cloud
+  Gaming device locale (`en-US` / `es-MX`) and `Accept-Language` header, while
+  keeping locale separate from the existing session market (`ES-MX`) and the
+  catalog market (`MX`). Auto follows the system locale where available.
+- Xbox device-code sign-in flow with bounded polling, cancellation, and guards
+  against stale or overlapping login attempts.
+
+### Changed
+
+- Expanded English/Spanish UI coverage and clarified that a title's own language
+  support remains outside XJAUS's control.
+
+### Release status
+
+- Local draft only. Do not treat this entry as a published release; the validation
+  report is `docs/validation-1.2.1.md` and the unpublished notes are
+  `docs/release-notes-1.2.1-draft.md`.
+
 ## [1.2.0] - 2026-10-21
 
 ### Added

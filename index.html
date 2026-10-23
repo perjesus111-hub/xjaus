@@ -28,12 +28,12 @@
       <aside class="sidebar" aria-label="Navegación principal" data-i18n-aria="sections">
         <div class="sidebar-brand" aria-label="XJAUS"><span aria-hidden="true">X</span>JAUS</div>
         <nav class="tabs sidebar-nav" aria-label="Secciones" data-i18n-aria="sections">
-          <button class="tab" type="button" data-action="home">Inicio</button>
+          <button class="tab" type="button" data-action="home" data-i18n="homeTab">Inicio</button>
           <button class="tab active" type="button" data-action="consoles" data-i18n="myConsolesTab">Mis Consolas</button>
-          <button class="tab" type="button" data-action="cloud">Cloud Gaming</button>
+          <button class="tab" type="button" data-action="cloud" data-i18n="cloudTab">Cloud Gaming</button>
           <button class="tab" type="button" data-action="settings" data-i18n="settings">Configuración</button>
         </nav>
-        <p class="sidebar-footer">Tu Xbox.<br>Tus juegos.<br>En Linux.</p>
+        <p class="sidebar-footer" data-i18n="sidebarFooter">Tu Xbox. Tus juegos. En Linux.</p>
       </aside>
       <main class="app-main">
         <header class="topbar">
@@ -48,19 +48,19 @@
         </header>
         <section class="panel dashboard-home" id="panel-home">
           <div class="dashboard-hero featured-hero" id="featured-hero" aria-live="polite">
-            <div class="featured-controls" aria-label="Navegación de juegos destacados">
-              <button id="featured-prev" class="featured-arrow" type="button" aria-label="Juego destacado anterior">‹</button>
-              <button id="featured-next" class="featured-arrow" type="button" aria-label="Siguiente juego destacado">›</button>
+            <div class="featured-controls" aria-label="Navegación de juegos destacados" data-i18n-aria="featuredNavigation">
+              <button id="featured-prev" class="featured-arrow" type="button" aria-label="Juego destacado anterior" data-i18n-aria="featuredPrevious">‹</button>
+              <button id="featured-next" class="featured-arrow" type="button" aria-label="Siguiente juego destacado" data-i18n-aria="featuredNext">›</button>
             </div>
-            <div class="dashboard-hero-copy"><p class="eyebrow">XCLOUD · DESTACADO</p><h1 id="featured-title">Juega tus juegos de Xbox<br>en Linux</h1><p id="featured-meta">Cloud Gaming y Remote Play en una sola aplicación.</p><button id="featured-open" class="featured-open" type="button" disabled>Ver juego</button></div>
-            <div id="featured-indicators" class="featured-indicators" aria-label="Posición del carrusel"></div>
+            <div class="dashboard-hero-copy"><p class="eyebrow" data-i18n="featuredEyebrow">XCLOUD · DESTACADO</p><h1 id="featured-title" data-i18n="homeWelcomeTitle">Juega tus juegos de Xbox en Linux</h1><p id="featured-meta" data-i18n="homeWelcomeMeta">Cloud Gaming y Remote Play en una sola aplicación.</p><button id="featured-open" class="featured-open" type="button" disabled data-i18n="viewGame">Ver juego</button></div>
+            <div id="featured-indicators" class="featured-indicators" aria-label="Posición del carrusel" data-i18n-aria="carouselPosition"></div>
           </div>
           <div class="dashboard-actions">
-            <button class="dashboard-action-card" type="button" data-home-action="cloud"><strong>Xbox Cloud Gaming</strong><span>Juega cientos de juegos desde la nube.</span><b aria-hidden="true">›</b></button>
-            <button class="dashboard-action-card" type="button" data-home-action="consoles"><strong>Xbox Remote Play</strong><span>Transmite desde tu consola Xbox.</span><b aria-hidden="true">›</b></button>
+            <button class="dashboard-action-card" type="button" data-home-action="cloud"><strong>Xbox Cloud Gaming</strong><span data-i18n="homeCloudDescription">Juega cientos de juegos desde la nube.</span><b aria-hidden="true">›</b></button>
+            <button class="dashboard-action-card" type="button" data-home-action="consoles"><strong>Xbox Remote Play</strong><span data-i18n="homeRemoteDescription">Transmite desde tu consola Xbox.</span><b aria-hidden="true">›</b></button>
           </div>
-          <section id="home-favorites" class="dashboard-recent" aria-labelledby="home-favorites-title" hidden><h2 id="home-favorites-title">Mis favoritos</h2><div id="home-favorites-grid" class="recent-grid"></div></section>
-          <section class="dashboard-recent" aria-labelledby="dashboard-recent-title"><h2 id="dashboard-recent-title">Juegos recientes</h2><p class="muted">Tu actividad aparecerá aquí después de iniciar un juego.</p></section>
+          <section id="home-favorites" class="dashboard-recent" aria-labelledby="home-favorites-title" hidden><h2 id="home-favorites-title" data-i18n="homeFavorites">Mis favoritos</h2><div id="home-favorites-grid" class="recent-grid"></div></section>
+          <section class="dashboard-recent" aria-labelledby="dashboard-recent-title"><h2 id="dashboard-recent-title" data-i18n="homeRecentGames">Juegos recientes</h2><p class="muted" data-i18n="homeRecentEmpty">Tu actividad aparecerá aquí después de iniciar un juego.</p></section>
         </section>
         <section class="panel" id="panel-consoles" hidden><div class="panel-head"><h2 data-i18n="myConsoles">Mis consolas</h2><button id="refresh-consoles" hidden type="button" aria-keyshortcuts="X" data-i18n="refreshConsoles">Refrescar · X</button></div><p class="panel-intro muted" data-i18n="consolesIntro">Transmite desde tu consola Xbox en tu red local. Refresca para buscar consolas de tu cuenta.</p><div class="remote-body"><div id="consoles-container" class="card-grid"><p class="muted" data-i18n="findingConsoles">Buscando consolas…</p></div><aside class="remote-context"><h3 data-i18n="remoteStatusHeading">Estado de Remote Play</h3><p id="remote-status" class="muted" aria-live="polite" data-i18n="findingConsoles">Buscando consolas…</p><button id="refresh-consoles-context" type="button" data-i18n="refreshConsoles">Refrescar · X</button></aside></div></section>
     <section class="panel" id="panel-cloud" hidden><div class="panel-head"><h2>Cloud Gaming</h2><span id="cloud-meta" class="cloud-meta" aria-live="polite"></span></div><div class="cloud-search-tools"><input id="cloud-search" type="search" placeholder="Buscar juego" aria-label="Buscar juego" data-i18n-aria="searchGame" data-i18n-placeholder="searchGame"><span class="search-shortcuts"><span><kbd class="pad-x">X</kbd> <span data-i18n="search">Buscar</span></span></span></div><section id="cloud-recent" class="cloud-recent" aria-labelledby="cloud-recent-heading" hidden><h3 id="cloud-recent-heading" data-i18n="continuePlaying">Continuar jugando</h3><div id="cloud-recent-grid" class="recent-grid"></div></section><div id="cloud-filters" class="cloud-filters" role="group" aria-label="Filtrar juegos" data-i18n-aria="filterGames"></div><div class="cloud-body"><div id="cloud-container" class="card-grid"><p class="muted" data-i18n="openCloudTab">Abre esta pestaña para cargar los juegos.</p></div><aside id="cloud-context" class="cloud-context" aria-live="polite" hidden><h3 data-i18n="cloudContextHeading">Juego seleccionado</h3><img id="cloud-context-art" alt="" hidden><strong id="cloud-context-title"></strong><p id="cloud-context-description" class="cloud-context-description" hidden></p><div id="cloud-context-tags" class="cloud-context-tags"></div><button id="cloud-context-play" type="button" data-i18n="play">Jugar</button></aside></div></section>

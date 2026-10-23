@@ -11,20 +11,22 @@ npm test
 npm run build:win
 ```
 
-`build:win` is exactly `electron-builder --win nsis --x64`.
+`build:win` runs `electron-builder --win --x64 --publish never`; the committed
+Windows target list selects both the NSIS `.exe` installer and the MSI target.
 Its npm pre-hook builds the frontend and the real Rust sidecar before packaging.
 `release/win/` is deliberately outside Vite's `dist/`.
 
 For long builds on this Fedora host, run through a user systemd unit with
 `MemoryMax=infinity`, `MemoryHigh=infinity`, `Nice=5`, the project as working
-directory, and PATH inherited. Set WINEPREFIX to a disposable directory under
-`/home/Greg/.hermes/cache/scratch/`, not a credential-bearing Wine prefix.
+directory, and PATH inherited. Set WINEPREFIX to a disposable, user-owned
+scratch directory; do not reuse a Wine prefix that may contain account data.
 
-Output: `release/win/XJAUS-0.1.0-win-x64-setup.exe`.
-NSIS uses an interactive wizard, per-user installation and a directory chooser.
-The standard NSIS bootstrap is PE32 (x86); its **app-64.7z payload**, Electron
-application and Rust backend are x64 / PE32+. Bootstrap architecture is not the
-installed application's architecture.
+Expected outputs are `release/win/XJAUS-<version>-win-x64-setup.exe` and
+`release/win/XJAUS-<version>-win-x64-setup.msi`. Both installers are configured
+per-user. NSIS uses an interactive wizard and directory chooser; MSI uses the
+Windows Installer UI. The NSIS bootstrap is PE32 (x86); its **app-64.7z payload**,
+Electron application and Rust backend are x64 / PE32+. Bootstrap architecture is
+not the installed application's architecture.
 
 ## Backend and production resources
 
@@ -57,31 +59,51 @@ existing `resources/icon_source.png`, with no new artwork.
 
 ## Verification and limitations
 
-Build/test logs and detailed audits from this packaging run are stored in
-`/home/Greg/.hermes/cache/scratch/xjaus-windows/` (scratch is automatically
-pruned when idle; retain important evidence elsewhere if needed).
+### Windows 1.2.1 status (local, not native-Windows validation)
 
-Verified: frontend and Electron tests, Linux Rust tests, Windows-target Rust
-tests executed under an isolated Wine prefix, actual NSIS archive extraction,
-matching packaged backend/ASAR bytes, PE architecture, DLL imports, and no ELF
-or native Node modules in the shipped application. A Wine/Xvfb smoke probe of
-the exact packaged Windows Electron application confirmed a fully loaded XJAUS
-page, the real preload IPC bridge, the Windows Rust backend's unauthenticated
-status and stored synthetic settings. This is **not native Windows testing**
-and does not establish real Xbox login, controller, GPU or streaming behavior.
-Wine was launched with disposable user data, no sandbox and GPU disabled only
-for the smoke test; those flags are not part of the application configuration.
+The following 1.2.1 installers were generated locally and passed 7-Zip container
+integrity checks:
 
-The installer, application and sidecar are unsigned: their Authenticode
-certificate-directory fields are zero. Windows may show publisher/SmartScreen
-warnings. No signing certificate was used or requested. npm audit reported
-8 moderate development-toolchain findings; no force-upgrade was applied.
+- `release/win/XJAUS-1.2.1-win-x64-setup.exe` — 115,137,563 bytes; SHA-256 `c22be927bcdc34b1b0b1d4b8ebae2b1fee46c578f447e795c842d00be958f5d2`; NSIS installer.
+- `release/win/XJAUS-1.2.1-win-x64-setup.msi` — 396,742,144 bytes; SHA-256 `b6b81a2d4731ef317f0cb1cd78fcd8e79abfcde6348dd074d4eeca16a49e866c`; MSI package with x64 template.
 
-The existing wake-deadline test has a 50 ms real-time network budget and failed
-once under parallel build/test load on both Wine and Linux. Full serial reruns
-passed; production wake behavior and that test were not changed.
+The EXE payload was extracted and the packaged application was smoke-tested under
+Wine/Xvfb. The MSI was installed in a disposable Wine prefix and its packaged UI
+was opened under Xvfb. These are not native Windows tests. The NSIS bootstrap is
+PE32/x86 as expected; the installed app and Rust backend payload are x64. No code
+signing certificate was applied or verified. Treat the MSI as a local candidate,
+not a public-ready installer, until native Windows install/upgrade/uninstall and
+signing checks are complete. Neither installer was used for a real Xbox OAuth or
+Remote Play test. See `docs/validation-1.2.1.md` and `release/SHA256SUMS` for the
+current test matrix and checksums.
 
-Primary documentation consulted: electron-builder's Multi Platform Build,
-NSIS and architecture documentation on electron.build; Microsoft Win32 security
-API documentation for protected DACLs. Wine is needed for Windows packaging;
-Mono is not required for NSIS. Actual local electron-builder version: 26.15.3.
+The final integrated run on 23 October 2026 passed 113/113 Windows-target Rust
+tests under the disposable Wine prefix. Cargo emitted four non-fatal warnings
+about an unused assignment/variables and dead code. This validates the cross-target
+test binary under Wine only; it does not establish native Windows compatibility.
+
+### Earlier packaging evidence (not a 1.2.1 installer claim)
+
+A prior Windows packaging exercise verified frontend/Electron tests, Linux Rust
+tests, Windows-target Rust tests under an isolated Wine prefix, NSIS archive
+extraction, matching packaged backend/ASAR bytes, PE architecture, DLL imports,
+and no ELF or native Node modules in the shipped application. A Wine/Xvfb smoke
+probe of that earlier packaged Windows Electron application confirmed the loaded
+page, preload IPC bridge, unauthenticated status, and synthetic settings. This is
+**not native Windows testing** and does not establish real Xbox login, controller,
+GPU, or streaming behavior; those results do not certify the 1.2.1 package.
+
+The earlier installer/application/sidecar were unsigned. No signing certificate
+was used or requested. An earlier `npm audit` reported 8 moderate development-
+toolchain findings; no force-upgrade was applied. These are historical results,
+not a fresh 1.2.1 audit.
+
+An earlier wake-deadline test with a 50 ms real-time network budget failed once
+under parallel load and passed on serial reruns; production wake behavior was not
+changed. This historical observation does not replace the 1.2.1 integrated test
+results recorded for the release candidate.
+
+Primary documentation consulted: electron-builder's Multi Platform Build, MSI,
+NSIS, and architecture documentation; Microsoft Win32 security API documentation
+for protected DACLs. Wine is needed for Windows packaging; Mono is not required
+for NSIS. Actual local electron-builder version: 26.15.3.

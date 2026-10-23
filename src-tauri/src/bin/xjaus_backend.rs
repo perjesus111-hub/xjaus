@@ -53,7 +53,10 @@ use serde_json::{Value, json};
 use session::{DeviceProfilePatch, IceCandidate, SessionClient, SessionKind};
 use std::{
     io::{self, BufRead, Write},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -61,6 +64,7 @@ const COMMANDS: &[&str] = &[
     "auth_status",
     "begin_login_window",
     "poll_login",
+    "cancel_login",
     "load_session",
     "persist_session",
     "refresh_session",
@@ -86,6 +90,16 @@ fn allowed_command(name: &str) -> bool {
     COMMANDS.contains(&name)
 }
 
+fn stream_locale_from_args(args: &Value) -> Result<Option<&str>, String> {
+    args.get("streamingLocale")
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| "Locale de streaming inválido".to_owned())
+        })
+        .transpose()
+}
+
 #[derive(Default)]
 struct KeepaliveGate(AtomicBool);
 impl KeepaliveGate {
@@ -99,13 +113,24 @@ impl KeepaliveGate {
     }
 }
 struct Backend {
-    auth_gate: auth_gate::AuthGate,
+    auth_gate: Arc<auth_gate::AuthGate>,
     stream_owner: Option<String>,
     client: Client,
     tokens: Option<TokenBundle>,
-    pending: Option<PendingLogin>,
+    pending: Option<(String, PendingLogin)>,
     stream: Option<SessionClient>,
     profile_cache: profile::ProfileCache,
+}
+async fn complete_login_timed(
+    client: &Client,
+    pending: &PendingLogin,
+) -> Result<TokenBundle, auth::AuthError> {
+    tokio::time::timeout(
+        Duration::from_secs(60),
+        auth::complete_login_from_device_code(client, pending),
+    )
+    .await
+    .unwrap_or(Err(auth::AuthError::Timeout))
 }
 impl Backend {
     fn invalidate_auth(&mut self) -> Result<(), String> {
@@ -119,7 +144,7 @@ impl Backend {
 
     fn new() -> Self {
         Self {
-            auth_gate: auth_gate::AuthGate::new(),
+            auth_gate: Arc::new(auth_gate::AuthGate::new()),
             stream_owner: None,
             client: session::http_client(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0",
@@ -151,10 +176,15 @@ impl Backend {
         args: Value,
         cancellations: &connection_cancel::ConnectionCancellation,
     ) -> Result<Value, String> {
-        let id = args
-            .get("attemptId")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
+        // Auth attempt IDs are scoped by AuthGate, not by connection cancellation
+        // or the active stream owner. Keep those namespaces independent.
+        let id = if matches!(cmd, "begin_login_window" | "poll_login" | "cancel_login") {
+            None
+        } else {
+            args.get("attemptId")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        };
         if cmd == "cancel_connection" {
             let id = id.ok_or("Falta el intento de conexión")?;
             cancellations.cancel(&id);
@@ -221,34 +251,73 @@ impl Backend {
                 Ok(Value::Null)
             }
             "auth_status" => Ok(self.status()),
+            "cancel_login" => {
+                if args.get("__xjausCancelApplied").and_then(Value::as_bool) == Some(true) {
+                    self.pending = None;
+                }
+                Ok(Value::Null)
+            }
             "begin_login_window" => {
-                let epoch = self.auth_gate.capture()?;
-                let (start, pending) = auth::begin_login(&self.client)
-                    .await
-                    .map_err(|e| e.to_string())?;
+                let (attempt_id, epoch) = auth_request_context(&args)?;
+                self.auth_gate.with_attempt(&attempt_id, |current| {
+                    if current != epoch {
+                        return Err(auth_gate::INVALIDATED.into());
+                    }
+                    self.pending = None;
+                    Ok(())
+                })?;
+                let mut invalidated = self.auth_gate.subscribe();
+                let (start, pending) = tokio::select! {
+                    _ = self.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+                    result = auth::begin_login(&self.client) => result.map_err(|e| e.to_string())?,
+                };
                 self.auth_gate.publish_pending(epoch, || {
-                    self.pending = Some(pending);
+                    self.pending = Some((attempt_id, pending));
                     Ok(())
                 })?;
                 serde_json::to_value(start).map_err(|_| "Respuesta de login inválida".into())
             }
             "poll_login" => {
-                let epoch = self.auth_gate.capture()?;
-                let Some(mut pending) = self.pending.take() else {
+                let (attempt_id, epoch) = auth_request_context(&args)?;
+                let pending = self.auth_gate.with_attempt(&attempt_id, |current| {
+                    if current != epoch {
+                        return Err(auth_gate::INVALIDATED.into());
+                    }
+                    match self.pending.take() {
+                        Some((pending_attempt, pending)) if pending_attempt == attempt_id => {
+                            Ok(Some(pending))
+                        }
+                        Some(other) => {
+                            self.pending = Some(other);
+                            Err(auth_gate::INVALIDATED.into())
+                        }
+                        None => Ok(None),
+                    }
+                })?;
+                let Some(mut pending) = pending else {
                     return if self.tokens.is_some() {
                         Ok(self.status())
                     } else {
                         Err("Inicia sesión primero".into())
                     };
                 };
-                let result = auth::poll_device_code(&self.client, &mut pending).await;
+                let mut invalidated = self.auth_gate.subscribe();
+                let result = tokio::select! {
+                    _ = self.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+                    result = auth::poll_device_code(&self.client, &mut pending) => result,
+                };
                 match result {
                     Ok(_) | Err(auth::AuthError::AlreadyVerified) => {
-                        match auth::complete_login_from_device_code(&self.client, &pending).await {
+                        let tokens = tokio::select! {
+                            _ = self.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+                            result = complete_login_timed(&self.client, &pending) => result,
+                        };
+                        match tokens {
                             Ok(tokens) => {
                                 let stored = self.auth_gate.commit(epoch, || {
                                     let stored = vault::save(&tokens);
                                     self.tokens = Some(tokens);
+                                    self.pending = None;
                                     Ok::<_, String>(stored)
                                 })?;
                                 if stored.is_err() {
@@ -258,24 +327,30 @@ impl Backend {
                             }
                             Err(error) => {
                                 self.auth_gate.publish_pending(epoch, || {
-                                    self.pending = Some(pending);
+                                    self.pending = Some((attempt_id, pending));
                                     Ok(())
                                 })?;
                                 Err(error.to_string())
                             }
                         }
                     }
-                    Err(auth::AuthError::Pending | auth::AuthError::SlowDown) => {
+                    Err(error @ (auth::AuthError::Pending | auth::AuthError::SlowDown)) => {
                         self.auth_gate.publish_pending(epoch, || {
-                            self.pending = Some(pending);
+                            self.pending = Some((attempt_id, pending));
                             Ok(())
                         })?;
-                        Err("Waiting for user".into())
+                        Err(error.to_string())
                     }
-                    Err(auth::AuthError::Expired) => Err("Device code expired".into()),
+                    Err(error @ (auth::AuthError::Expired | auth::AuthError::Denied)) => {
+                        self.auth_gate.publish_pending(epoch, || {
+                            self.pending = None;
+                            Ok(())
+                        })?;
+                        Err(error.to_string())
+                    }
                     Err(error) => {
                         self.auth_gate.publish_pending(epoch, || {
-                            self.pending = Some(pending);
+                            self.pending = Some((attempt_id, pending));
                             Ok(())
                         })?;
                         Err(error.to_string())
@@ -448,7 +523,8 @@ impl Backend {
                 let ids: Vec<String> =
                     serde_json::from_value(args.get("productIds").cloned().unwrap_or(Value::Null))
                         .map_err(|_| "Falta la lista de productos")?;
-                catalog::catalog_products(&self.client, &ids).await
+                let language = args.get("language").and_then(Value::as_str).unwrap_or("es");
+                catalog::catalog_products(&self.client, &ids, language).await
             }
             "start_stream" => {
                 let start = args.get("args").ok_or("Faltan datos de streaming")?;
@@ -460,14 +536,14 @@ impl Backend {
                     .and_then(Value::as_str)
                     .filter(|s| !s.is_empty())
                     .ok_or("Falta la consola o el título")?;
-                let profile = start
+                let profile_patch = start
                     .get("profile")
                     .filter(|v| !v.is_null())
                     .map(|v| serde_json::from_value::<DeviceProfilePatch>(v.clone()))
                     .transpose()
-                    .map_err(|_| "Perfil de dispositivo inválido")?
-                    .map(DeviceProfilePatch::apply)
-                    .unwrap_or_default();
+                    .map_err(|_| "Perfil de dispositivo inválido")?;
+                let streaming_locale = stream_locale_from_args(start)?;
+                let profile = session::profile_for_stream(kind, profile_patch, streaming_locale)?;
                 let token = self.streaming_token(kind)?;
                 let host = region_host(token)?;
                 let bearer = text_field(token, "gsToken")?;
@@ -653,7 +729,63 @@ struct Request {
     args: Value,
     #[serde(skip)]
     skip_keepalive: bool,
+    #[serde(skip)]
+    pre_dispatch_error: Option<String>,
 }
+
+/// Stamp auth requests at stdin arrival, not when the serial dispatcher later
+/// reaches them. A cancellation/new attempt therefore invalidates older queued
+/// begin/poll requests instead of letting them capture a fresh epoch.
+fn stamp_auth_request(gate: &auth_gate::AuthGate, request: &mut Request) -> Result<(), String> {
+    if !matches!(
+        request.cmd.as_str(),
+        "begin_login_window" | "poll_login" | "cancel_login"
+    ) {
+        return Ok(());
+    }
+    let args = request
+        .args
+        .as_object_mut()
+        .ok_or("Invalid login attempt arguments")?;
+    let attempt_id = args
+        .get("attemptId")
+        .and_then(Value::as_str)
+        .ok_or("Missing login attempt identifier")?
+        .to_owned();
+    args.remove("__xjausAuthEpoch");
+    args.remove("__xjausCancelApplied");
+    match request.cmd.as_str() {
+        "begin_login_window" => {
+            let epoch = gate.begin_attempt(&attempt_id)?;
+            args.insert("__xjausAuthEpoch".into(), json!(epoch));
+        }
+        "poll_login" => {
+            let epoch = gate.capture_attempt(&attempt_id)?;
+            args.insert("__xjausAuthEpoch".into(), json!(epoch));
+        }
+        "cancel_login" => {
+            let applied = gate.cancel_attempt(&attempt_id)?;
+            args.insert("__xjausCancelApplied".into(), json!(applied));
+        }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
+
+fn auth_request_context(args: &Value) -> Result<(String, u64), String> {
+    let attempt_id = args
+        .get("attemptId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or("Missing login attempt identifier")?
+        .to_owned();
+    let epoch = args
+        .get("__xjausAuthEpoch")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| auth_gate::INVALIDATED.to_owned())?;
+    Ok((attempt_id, epoch))
+}
+
 fn main() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -662,6 +794,7 @@ fn main() {
     let mut backend = Backend::new();
     let cancellations = std::sync::Arc::new(connection_cancel::ConnectionCancellation::default());
     let reader_cancellations = cancellations.clone();
+    let reader_auth_gate = backend.auth_gate.clone();
     let keepalive = std::sync::Arc::new(KeepaliveGate::default());
     let reader_keepalive = keepalive.clone();
     let (sender, requests) = std::sync::mpsc::channel();
@@ -676,6 +809,9 @@ fn main() {
             let Ok(mut request) = serde_json::from_str::<Request>(&line) else {
                 continue;
             };
+            if let Err(error) = stamp_auth_request(&reader_auth_gate, &mut request) {
+                request.pre_dispatch_error = Some(error);
+            }
             if request.cmd == "stream_keepalive" {
                 request.skip_keepalive = !reader_keepalive.reserve();
             }
@@ -691,17 +827,22 @@ fn main() {
     });
     let mut stdout = io::stdout().lock();
     for request in requests {
-        let result = if request.skip_keepalive {
+        let request_id = request.id;
+        let command = request.cmd.clone();
+        let pre_dispatch_error = request.pre_dispatch_error;
+        let result = if let Some(error) = pre_dispatch_error {
+            Err(error)
+        } else if request.skip_keepalive {
             Ok(Value::Null)
         } else {
             runtime.block_on(backend.scoped_dispatch(&request.cmd, request.args, &cancellations))
         };
-        if request.cmd == "stream_keepalive" && !request.skip_keepalive {
+        if command == "stream_keepalive" && !request.skip_keepalive {
             keepalive.release();
         }
         let response = match result {
-            Ok(value) => json!({"id": request.id, "result": value}),
-            Err(error) => json!({"id": request.id, "error": error}),
+            Ok(value) => json!({"id": request_id, "result": value}),
+            Err(error) => json!({"id": request_id, "error": error}),
         };
         if writeln!(stdout, "{response}").is_err() || stdout.flush().is_err() {
             break;
@@ -712,6 +853,93 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sidecar_start_stream_parses_requested_locale_separately_from_profile() {
+        let start = json!({
+            "streamingLocale": "en-US",
+            "profile": {"width": 2560, "locale": "es-MX"}
+        });
+        let locale = stream_locale_from_args(&start).unwrap();
+        let patch = serde_json::from_value::<DeviceProfilePatch>(start["profile"].clone()).unwrap();
+        let profile = session::profile_for_stream(SessionKind::Cloud, Some(patch), locale).unwrap();
+        assert_eq!(profile.locale, "en-US");
+        assert_eq!(
+            profile
+                .play_payload(SessionKind::Cloud, "title")
+                .pointer("/settings/market")
+                .and_then(Value::as_str),
+            Some("ES-MX")
+        );
+
+        let home = session::profile_for_stream(SessionKind::Home, None, Some("en-US")).unwrap();
+        assert_eq!(home.locale, "es-MX");
+        assert!(stream_locale_from_args(&json!({"streamingLocale": 123})).is_err());
+    }
+
+    #[test]
+    fn queued_old_attempt_and_stale_cancel_cannot_adopt_or_invalidate_a_retry() {
+        let gate = auth_gate::AuthGate::new();
+        let mut begin_a = serde_json::from_value(
+            json!({"id":1,"cmd":"begin_login_window","args":{"attemptId":"attempt-a"}}),
+        )
+        .unwrap();
+        stamp_auth_request(&gate, &mut begin_a).unwrap();
+        let (_, old_epoch) = auth_request_context(&begin_a.args).unwrap();
+        let mut old_poll = serde_json::from_value(
+            json!({"id":2,"cmd":"poll_login","args":{"attemptId":"attempt-a"}}),
+        )
+        .unwrap();
+        stamp_auth_request(&gate, &mut old_poll).unwrap();
+
+        let mut cancel_a = serde_json::from_value(
+            json!({"id":3,"cmd":"cancel_login","args":{"attemptId":"attempt-a"}}),
+        )
+        .unwrap();
+        stamp_auth_request(&gate, &mut cancel_a).unwrap();
+        assert_eq!(cancel_a.args["__xjausCancelApplied"], true);
+        let mut begin_b = serde_json::from_value(
+            json!({"id":4,"cmd":"begin_login_window","args":{"attemptId":"attempt-b"}}),
+        )
+        .unwrap();
+        stamp_auth_request(&gate, &mut begin_b).unwrap();
+        let (_, retry_epoch) = auth_request_context(&begin_b.args).unwrap();
+        assert_ne!(old_epoch, retry_epoch);
+
+        let mut stale_cancel = serde_json::from_value(
+            json!({"id":5,"cmd":"cancel_login","args":{"attemptId":"attempt-a"}}),
+        )
+        .unwrap();
+        stamp_auth_request(&gate, &mut stale_cancel).unwrap();
+        assert_eq!(stale_cancel.args["__xjausCancelApplied"], false);
+        assert_eq!(gate.capture_attempt("attempt-b").unwrap(), retry_epoch);
+
+        let (old_id, stamped_old_epoch) = auth_request_context(&old_poll.args).unwrap();
+        let published = std::cell::Cell::new(false);
+        assert_eq!(
+            gate.with_attempt(&old_id, |current| {
+                if current != stamped_old_epoch {
+                    return Err(auth_gate::INVALIDATED.into());
+                }
+                published.set(true);
+                Ok(())
+            })
+            .unwrap_err(),
+            auth_gate::INVALIDATED,
+        );
+        assert!(!published.get(), "queued old poll cannot act as the retry");
+
+        let persisted = std::cell::Cell::new(false);
+        assert_eq!(
+            gate.commit(old_epoch, || {
+                persisted.set(true);
+                Ok::<_, String>(())
+            })
+            .unwrap_err(),
+            auth_gate::INVALIDATED,
+        );
+        assert!(!persisted.get(), "late old-attempt tokens cannot persist");
+    }
+
     #[test]
     fn late_sidecar_refresh_after_logout_cannot_restore_tokens() {
         let gate = auth_gate::AuthGate::new();
@@ -748,7 +976,7 @@ mod tests {
                     Default::default(),
                 )),
                 profile_cache: profile::ProfileCache::production(),
-                auth_gate: auth_gate::AuthGate::new(),
+                auth_gate: Arc::new(auth_gate::AuthGate::new()),
             };
             backend
                 .scoped_dispatch(
@@ -783,6 +1011,91 @@ mod tests {
             assert!(backend.stream_owner.is_none());
         });
     }
+    #[test]
+    fn login_attempt_ids_are_not_checked_as_stream_owners() {
+        tauri::async_runtime::block_on(async {
+            let cancellations = connection_cancel::ConnectionCancellation::default();
+            let mut backend = Backend {
+                client: Client::new(),
+                tokens: None,
+                pending: None,
+                stream_owner: Some("stale-stream-attempt".into()),
+                stream: None,
+                profile_cache: profile::ProfileCache::production(),
+                auth_gate: Arc::new(auth_gate::AuthGate::new()),
+            };
+            backend
+                .scoped_dispatch(
+                    "cancel_login",
+                    json!({"attemptId":"new-login-attempt", "__xjausCancelApplied":true}),
+                    &cancellations,
+                )
+                .await
+                .expect("login cancellation must not be rejected by stream ownership");
+            assert!(backend.pending.is_none());
+        });
+    }
+
+    #[test]
+    fn begin_login_attempt_bypasses_stale_stream_owner_before_auth_gate_check() {
+        tauri::async_runtime::block_on(async {
+            let cancellations = connection_cancel::ConnectionCancellation::default();
+            let mut backend = Backend {
+                client: Client::new(),
+                tokens: None,
+                pending: None,
+                stream_owner: Some("stale-stream-attempt".into()),
+                stream: None,
+                profile_cache: profile::ProfileCache::production(),
+                auth_gate: Arc::new(auth_gate::AuthGate::new()),
+            };
+            let attempt_id = "new-login-attempt";
+            let mut request = Request {
+                id: 1,
+                cmd: "begin_login_window".into(),
+                args: json!({"attemptId":attempt_id}),
+                skip_keepalive: false,
+                pre_dispatch_error: None,
+            };
+            stamp_auth_request(&backend.auth_gate, &mut request).unwrap();
+            backend.auth_gate.cancel_attempt(attempt_id).unwrap();
+            let result = backend
+                .scoped_dispatch(&request.cmd, request.args, &cancellations)
+                .await;
+            assert_eq!(result.unwrap_err(), auth_gate::INVALIDATED);
+        });
+    }
+
+    #[test]
+    fn poll_login_attempt_bypasses_stale_stream_owner_and_reaches_auth_gate() {
+        tauri::async_runtime::block_on(async {
+            let cancellations = connection_cancel::ConnectionCancellation::default();
+            let mut backend = Backend {
+                client: Client::new(),
+                tokens: None,
+                pending: None,
+                stream_owner: Some("stale-stream-attempt".into()),
+                stream: None,
+                profile_cache: profile::ProfileCache::production(),
+                auth_gate: Arc::new(auth_gate::AuthGate::new()),
+            };
+            let attempt_id = "existing-login-attempt";
+            backend.auth_gate.begin_attempt(attempt_id).unwrap();
+            let mut request = Request {
+                id: 2,
+                cmd: "poll_login".into(),
+                args: json!({"attemptId":attempt_id}),
+                skip_keepalive: false,
+                pre_dispatch_error: None,
+            };
+            stamp_auth_request(&backend.auth_gate, &mut request).unwrap();
+            let result = backend
+                .scoped_dispatch(&request.cmd, request.args, &cancellations)
+                .await;
+            assert_eq!(result.unwrap_err(), "Inicia sesión primero");
+        });
+    }
+
     #[test]
     fn ipc_allows_only_named_operations() {
         assert!(allowed_command("auth_status"));

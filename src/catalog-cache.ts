@@ -1,10 +1,11 @@
 import { sanitizeGameProperties } from "./catalog-features";
 type Metadata = { Products: unknown[] };
+export type CatalogLanguage = "es" | "en";
 export function missingMetadataIds(ids: string[], metadata: Metadata): string[] {
   const cached = new Set(metadata.Products.map(record).filter(item=>item.Properties !== null && typeof item.Properties === "object").map(item=>item.ProductId));
   return ids.filter((id) => !cached.has(id));
 }
-const key = (account: string) => `xjaus:catalog:metadata:v2:${encodeURIComponent(account)}`;
+const key = (account: string, language: CatalogLanguage) => `xjaus:catalog:metadata:v3:${encodeURIComponent(account)}:${language}`;
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 function sanitize(value: unknown): Metadata {
   const products = record(value).Products;
@@ -23,14 +24,14 @@ function sanitize(value: unknown): Metadata {
     }) }] }];
   }) };
 }
-export function readMetadata(storage: Pick<Storage, "getItem">, account: string): Metadata {
+export function readMetadata(storage: Pick<Storage, "getItem">, account: string, language: CatalogLanguage): Metadata {
   if (!account) return { Products: [] };
   try {
-    const value = JSON.parse(storage.getItem(key(account)) ?? "null");
+    const value = JSON.parse(storage.getItem(key(account, language)) ?? "null");
     return record(value).version === 1 ? sanitize(value) : { Products: [] };
   } catch { return { Products: [] }; }
 }
-export function writeMetadata(storage: Pick<Storage, "setItem">, account: string, metadata: unknown): void {
+export function writeMetadata(storage: Pick<Storage, "setItem">, account: string, language: CatalogLanguage, metadata: unknown): void {
   if (!account) return;
-  try { storage.setItem(key(account), JSON.stringify({ version: 1, ...sanitize(metadata) })); } catch { /* Quota/private storage: continue in memory. */ }
+  try { storage.setItem(key(account, language), JSON.stringify({ version: 1, ...sanitize(metadata) })); } catch { /* Quota/private storage: continue in memory. */ }
 }

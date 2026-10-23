@@ -1,14 +1,18 @@
 // Xbox authentication — Device Code Auth; see README for upstream provenance.
 // OAuth 2.0 Device Code Grant (RFC 8628). No requiere webviews ni redirects custom.
 
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use zeroize::Zeroize;
 
 const DEVICE_CODE_CLIENT_ID: &str = "1f907974-e22b-4810-a9de-d9647380c97e";
 const DEVICE_CODE_SCOPE: &str = "xboxlive.signin openid profile offline_access";
+const DEVICE_CODE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
+const DEVICE_TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+const DEFAULT_VERIFICATION_URI: &str = "https://microsoft.com/devicelogin";
+const MAX_DEVICE_CODE_LIFETIME_SECS: u64 = 3600;
 
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(transparent)]
@@ -77,23 +81,21 @@ impl std::fmt::Debug for TokenBundle {
 #[derive(Serialize)]
 pub struct LoginStart {
     pub user_code: String,
-    pub device_code: String,
     pub verification_uri: String,
-    pub verification_uri_complete: String,
     pub expires_in: u64,
     pub interval: u64,
-    pub message: String,
 }
 
-/// Respuesta del endpoint devicecode de Microsoft
+/// Microsoft device-code response. Device and access tokens stay backend-only.
 #[derive(Deserialize)]
 struct DeviceCodeResponse {
     user_code: String,
     device_code: String,
-    verification_uri: String,
+    #[serde(default)]
+    verification_uri: Option<String>,
     expires_in: u64,
+    #[serde(default = "default_poll_interval")]
     interval: u64,
-    message: String,
 }
 
 /// Respuesta del polling de token
@@ -101,18 +103,25 @@ struct DeviceCodeResponse {
 pub struct DeviceCodeVerifyResponse {
     pub access_token: String,
     pub refresh_token: Option<String>,
-    pub expires_in: u64,
-    /// Segundos recomendados entre polls (Microsoft devuelve 5)
-    #[serde(default = "default_poll_interval")]
-    pub interval: u64,
-    #[serde(default)]
-    pub token_type: String,
-    #[serde(default)]
-    pub scope: String,
 }
 
 fn default_poll_interval() -> u64 {
     5
+}
+
+fn valid_verification_uri(value: &str) -> bool {
+    let Ok(url) = Url::parse(value) else {
+        return false;
+    };
+    url.as_str() == value
+        && url.scheme() == "https"
+        && matches!(url.host_str(), Some("microsoft.com" | "www.microsoft.com"))
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port().is_none()
+        && matches!(url.path(), "/devicelogin" | "/link")
+        && url.query().is_none()
+        && url.fragment().is_none()
 }
 
 pub struct PendingLogin {
@@ -141,45 +150,114 @@ fn now_unix() -> u64 {
         .as_secs()
 }
 
-/// Paso 1: solicitar device code a Microsoft Live
+/// Paso 1: solicitar device code a Microsoft Live.
 pub async fn begin_login(client: &Client) -> Result<(LoginStart, PendingLogin), AuthError> {
+    begin_login_at(client, DEVICE_CODE_URL).await
+}
+
+async fn begin_login_at(
+    client: &Client,
+    endpoint: &str,
+) -> Result<(LoginStart, PendingLogin), AuthError> {
+    let started = Instant::now();
+    eprintln!("[XJAUS_AUTH] device_code_request_started");
     let params = [
         ("client_id", DEVICE_CODE_CLIENT_ID),
         ("scope", DEVICE_CODE_SCOPE),
     ];
-    let response = client
-        .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode")
+    let response = match client
+        .post(endpoint)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .form(&params)
         .send()
-        .await?;
-    let status = response.status();
-    let body: Value = response
-        .json()
         .await
-        .map_err(|e| AuthError::Http(format!("devicecode: respuesta no JSON ({e})")))?;
-    if !status.is_success() {
+    {
+        Ok(response) => response,
+        Err(error) => {
+            eprintln!(
+                "[XJAUS_AUTH] device_code_request_failed category={}",
+                if error.is_timeout() {
+                    "timeout"
+                } else {
+                    "network"
+                }
+            );
+            return Err(error.into());
+        }
+    };
+    let status = response.status();
+    let success = status.is_success();
+    let elapsed_ms = started.elapsed().as_millis().min(99_999_999);
+    eprintln!(
+        "[XJAUS_AUTH] device_code_response_received status={} duration_ms={elapsed_ms}",
+        status.as_u16()
+    );
+    let raw = match response.bytes().await {
+        Ok(raw) => raw,
+        Err(error) => {
+            eprintln!(
+                "[XJAUS_AUTH] device_code_request_failed category={}",
+                if error.is_timeout() {
+                    "timeout"
+                } else {
+                    "network"
+                }
+            );
+            return Err(error.into());
+        }
+    };
+    let body = serde_json::from_slice::<Value>(&raw);
+    if !success {
         let code = body
-            .get("error")
+            .as_ref()
+            .ok()
+            .and_then(|value| value.get("error"))
             .and_then(Value::as_str)
-            .map(|s| s.to_owned())
-            .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-        return Err(AuthError::OAuth(code));
+            .filter(|value| !value.is_empty())
+            .unwrap_or("");
+        eprintln!(
+            "[XJAUS_AUTH] device_code_request_failed category={}",
+            if code.is_empty() { "http" } else { "oauth" }
+        );
+        return Err(AuthError::OAuth(if code.is_empty() {
+            format!("HTTP {}", status.as_u16())
+        } else {
+            code.to_owned()
+        }));
     }
-    let parsed: DeviceCodeResponse = serde_json::from_value(body.clone())
-        .map_err(|e| AuthError::Http(format!("devicecode: campos faltantes ({e})")))?;
-    let verification_uri_complete =
-        format!("{}?user_code={}", parsed.verification_uri, parsed.user_code);
-
+    let body = body.map_err(|_| {
+        eprintln!("[XJAUS_AUTH] device_code_response_invalid category=json");
+        AuthError::InvalidResponse
+    })?;
+    let parsed: DeviceCodeResponse = serde_json::from_value(body).map_err(|_| {
+        eprintln!("[XJAUS_AUTH] device_code_response_invalid category=schema");
+        AuthError::InvalidResponse
+    })?;
+    if parsed.user_code.trim().is_empty()
+        || parsed.user_code.len() > 64
+        || parsed.device_code.is_empty()
+        || parsed.expires_in == 0
+        || parsed.expires_in > MAX_DEVICE_CODE_LIFETIME_SECS
+        || parsed.interval == 0
+        || parsed.interval > MAX_DEVICE_CODE_LIFETIME_SECS
+    {
+        eprintln!("[XJAUS_AUTH] device_code_response_invalid category=schema");
+        return Err(AuthError::InvalidResponse);
+    }
+    let verification_uri = parsed
+        .verification_uri
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_VERIFICATION_URI.to_owned());
+    if !valid_verification_uri(&verification_uri) {
+        eprintln!("[XJAUS_AUTH] device_code_response_invalid category=url");
+        return Err(AuthError::InvalidVerificationUri);
+    }
     Ok((
         LoginStart {
-            user_code: parsed.user_code.clone(),
-            device_code: parsed.device_code.clone(),
-            verification_uri: parsed.verification_uri.clone(),
-            verification_uri_complete,
+            user_code: parsed.user_code,
+            verification_uri,
             expires_in: parsed.expires_in,
             interval: parsed.interval,
-            message: parsed.message.clone(),
         },
         PendingLogin {
             device_code: parsed.device_code,
@@ -191,63 +269,120 @@ pub async fn begin_login(client: &Client) -> Result<(LoginStart, PendingLogin), 
     ))
 }
 
-/// Paso 2: hacer polling hasta que el usuario se autentique en el navegador
+/// Paso 2: hacer polling respetando el estado que devuelve el proveedor.
 pub async fn poll_device_code(
     client: &Client,
     pending: &mut PendingLogin,
 ) -> Result<DeviceCodeVerifyResponse, AuthError> {
-    // Si el poll anterior ya consiguió el access token, NO re-usamos el device
-    // code (es de un solo uso): el token ya está en pending y el caller puede
-    // pasar directo al intercambio.
-    if let Some(_) = pending.access_token {
+    poll_device_code_at(client, pending, DEVICE_TOKEN_URL).await
+}
+
+async fn poll_device_code_at(
+    client: &Client,
+    pending: &mut PendingLogin,
+    endpoint: &str,
+) -> Result<DeviceCodeVerifyResponse, AuthError> {
+    if pending.access_token.is_some() {
         return Err(AuthError::AlreadyVerified);
     }
-
+    if now_unix().saturating_sub(pending.acquired_at_unix) >= pending.expires_in {
+        return Err(AuthError::Expired);
+    }
     let params = [
         ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
         ("client_id", DEVICE_CODE_CLIENT_ID),
         ("device_code", &pending.device_code),
     ];
-    let response = client
-        .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
+    let response = match client
+        .post(endpoint)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .form(&params)
         .send()
-        .await?;
-    let status = response.status();
-    let body: Value = response
-        .json()
         .await
-        .map_err(|e| AuthError::Http(format!("token: respuesta no JSON ({e})")))?;
-
-    if status.is_success() {
-        let parsed: DeviceCodeVerifyResponse = serde_json::from_value(body.clone())
-            .map_err(|e| AuthError::Http(format!("token: campos faltantes ({e})")))?;
-        pending.access_token = Some(parsed.access_token.clone());
-        pending.refresh_token = parsed.refresh_token.clone();
-        return Ok(parsed);
-    }
-
-    // Errores esperados del flujo device code (authorization_pending / slow_down)
-    let error_code = body
-        .get("error")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_owned();
-    match error_code.as_str() {
-        "authorization_pending" => Err(AuthError::Pending),
-        "slow_down" => Err(AuthError::SlowDown),
-        "expired_token" => Err(AuthError::Expired),
-        "authorization_expired" => Err(AuthError::Expired),
-        _ => {
-            let desc = body
-                .get("error_description")
-                .and_then(Value::as_str)
-                .unwrap_or(&error_code)
-                .to_owned();
-            Err(AuthError::OAuth(format!("{error_code}: {desc}")))
+    {
+        Ok(response) => response,
+        Err(error) => {
+            eprintln!(
+                "[XJAUS_AUTH] device_code_request_failed category={}",
+                if error.is_timeout() {
+                    "timeout"
+                } else {
+                    "network"
+                }
+            );
+            return Err(error.into());
         }
+    };
+    let status = response.status();
+    let success = status.is_success();
+    let raw = match response.bytes().await {
+        Ok(raw) => raw,
+        Err(error) => {
+            eprintln!(
+                "[XJAUS_AUTH] device_code_request_failed category={}",
+                if error.is_timeout() {
+                    "timeout"
+                } else {
+                    "network"
+                }
+            );
+            return Err(error.into());
+        }
+    };
+    let body = serde_json::from_slice::<Value>(&raw);
+    if !success {
+        let error_code = body
+            .as_ref()
+            .ok()
+            .and_then(|value| value.get("error"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        return match error_code {
+            "authorization_pending" => {
+                eprintln!("[XJAUS_AUTH] device_code_poll pending");
+                Err(AuthError::Pending)
+            }
+            "slow_down" => {
+                eprintln!("[XJAUS_AUTH] device_code_poll slow_down");
+                Err(AuthError::SlowDown)
+            }
+            "expired_token" | "authorization_expired" => {
+                eprintln!("[XJAUS_AUTH] device_code_poll expired");
+                Err(AuthError::Expired)
+            }
+            "access_denied" | "authorization_declined" => {
+                eprintln!("[XJAUS_AUTH] device_code_poll denied");
+                Err(AuthError::Denied)
+            }
+            _ => {
+                eprintln!(
+                    "[XJAUS_AUTH] device_code_request_failed category={}",
+                    if error_code.is_empty() {
+                        "http"
+                    } else {
+                        "oauth"
+                    }
+                );
+                Err(AuthError::OAuth(if error_code.is_empty() {
+                    format!("HTTP {}", status.as_u16())
+                } else {
+                    error_code.to_owned()
+                }))
+            }
+        };
     }
+    let body = body.map_err(|_| {
+        eprintln!("[XJAUS_AUTH] device_code_response_invalid category=json");
+        AuthError::InvalidResponse
+    })?;
+    let parsed: DeviceCodeVerifyResponse = serde_json::from_value(body).map_err(|_| {
+        eprintln!("[XJAUS_AUTH] device_code_response_invalid category=schema");
+        AuthError::InvalidResponse
+    })?;
+    pending.access_token = Some(parsed.access_token.clone());
+    pending.refresh_token = parsed.refresh_token.clone();
+    eprintln!("[XJAUS_AUTH] device_code_poll authorized");
+    Ok(parsed)
 }
 
 /// Paso 3: intercambiar access token por XSTS y obtener tokens de Xbox.
@@ -611,16 +746,14 @@ pub async fn refresh_bundle(
     complete_login_from_device_code(client, &pending).await
 }
 
-/// Intervalo de polling del device code: respeta `interval` de la respuesta E2,
-/// con mínimo 5 s (RFC 8628 §3.2) y tope 15 s.
-pub fn poll_interval(response: &DeviceCodeVerifyResponse) -> Duration {
-    Duration::from_secs(response.interval.clamp(5, 15))
-}
-
 #[derive(Debug)]
 pub enum AuthError {
     Http(String),
     OAuth(String),
+    Timeout,
+    InvalidResponse,
+    InvalidVerificationUri,
+    Denied,
     InvalidState,
     Serialization,
     Pending,
@@ -642,6 +775,10 @@ impl std::fmt::Display for AuthError {
         match self {
             Self::Http(detail) => write!(f, "Fallo de red/HTTP: {detail}"),
             Self::OAuth(code) => write!(f, "Xbox/Microsoft rechazó la autenticación: {code}"),
+            Self::Timeout => write!(f, "device_code_timeout"),
+            Self::InvalidResponse => write!(f, "invalid_device_code_response"),
+            Self::InvalidVerificationUri => write!(f, "invalid_verification_uri"),
+            Self::Denied => write!(f, "authorization_declined"),
             Self::InvalidState => write!(
                 f,
                 "Estado de autenticación inválido; reinicia el inicio de sesión"
@@ -657,7 +794,11 @@ impl std::fmt::Display for AuthError {
 impl std::error::Error for AuthError {}
 impl From<reqwest::Error> for AuthError {
     fn from(e: reqwest::Error) -> Self {
-        AuthError::Http(format!("red: {e}"))
+        if e.is_timeout() {
+            AuthError::Timeout
+        } else {
+            AuthError::Http(format!("red: {e}"))
+        }
     }
 }
 impl From<serde_json::Error> for AuthError {
@@ -669,6 +810,7 @@ impl From<serde_json::Error> for AuthError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn transfer_tokens_require_five_minutes_remaining_and_never_debug_secrets() {
@@ -810,19 +952,206 @@ mod tests {
     }
 
     #[test]
-    fn device_code_start_produces_complete_url() {
+    fn device_code_start_exposes_only_the_user_code_and_verification_uri() {
         let start = LoginStart {
-            user_code: "ABCD1234".into(),
-            device_code: "device-code-123".into(),
+            user_code: "FIXTURE-CODE".into(),
             verification_uri: "https://microsoft.com/devicelogin".into(),
-            verification_uri_complete: "https://microsoft.com/devicelogin?user_code=ABCD1234"
-                .into(),
             expires_in: 900,
             interval: 5,
-            message: "Sign in with code ABCD1234".into(),
         };
-        assert!(start.verification_uri_complete.contains("ABCD1234"));
-        assert_eq!(start.interval, 5);
+        let value = serde_json::to_value(start).unwrap();
+        assert_eq!(value["user_code"], "FIXTURE-CODE");
+        assert_eq!(value["verification_uri"], DEFAULT_VERIFICATION_URI);
+        assert_eq!(value["expires_in"], 900);
+        assert_eq!(value["interval"], 5);
+        assert!(value.get("device_code").is_none());
+        assert!(value.get("verification_uri_complete").is_none());
+        assert!(value.get("message").is_none());
+    }
+
+    fn mock_oauth_endpoint(response: Option<(u16, String)>, delay: Duration) -> String {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+            let mut request = [0u8; 8192];
+            let _ = stream.read(&mut request);
+            if !delay.is_zero() {
+                std::thread::sleep(delay);
+            }
+            if let Some((status, body)) = response {
+                let reply = format!(
+                    "HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(reply.as_bytes());
+                let _ = stream.flush();
+            }
+        });
+        format!("http://{address}/oauth")
+    }
+
+    fn oauth_test_client(timeout: Duration) -> Client {
+        Client::builder()
+            .connect_timeout(Duration::from_secs(1))
+            .timeout(timeout)
+            .build()
+            .unwrap()
+    }
+
+    fn pending_fixture() -> PendingLogin {
+        PendingLogin {
+            device_code: "PRIVATE-FIXTURE-DEVICE-CODE".into(),
+            access_token: None,
+            refresh_token: None,
+            expires_in: 900,
+            acquired_at_unix: now_unix(),
+        }
+    }
+
+    #[tokio::test]
+    async fn device_code_request_handles_success_fallback_and_private_fields() {
+        let endpoint = mock_oauth_endpoint(Some((200, r#"{"user_code":"FIXTURE-CODE","device_code":"PRIVATE-FIXTURE-DEVICE-CODE","expires_in":900,"interval":5,"message":"fixture"}"#.into())), Duration::ZERO);
+        let (start, pending) =
+            begin_login_at(&oauth_test_client(Duration::from_secs(1)), &endpoint)
+                .await
+                .unwrap();
+        assert_eq!(start.verification_uri, DEFAULT_VERIFICATION_URI);
+        assert_eq!(start.user_code, "FIXTURE-CODE");
+        assert_eq!(pending.device_code, "PRIVATE-FIXTURE-DEVICE-CODE");
+        let serialized = serde_json::to_value(start).unwrap();
+        assert!(serialized.get("device_code").is_none());
+        assert!(serialized.get("message").is_none());
+        assert!(serialized.get("verification_uri_complete").is_none());
+    }
+
+    #[tokio::test]
+    async fn device_code_request_rejects_invalid_payload_and_verification_url() {
+        let malformed = mock_oauth_endpoint(Some((200, "{not-json".into())), Duration::ZERO);
+        assert!(matches!(
+            begin_login_at(&oauth_test_client(Duration::from_secs(1)), &malformed).await,
+            Err(AuthError::InvalidResponse)
+        ));
+        let missing_fields = mock_oauth_endpoint(
+            Some((200, r#"{"device_code":"private","expires_in":900}"#.into())),
+            Duration::ZERO,
+        );
+        assert!(matches!(
+            begin_login_at(&oauth_test_client(Duration::from_secs(1)), &missing_fields).await,
+            Err(AuthError::InvalidResponse)
+        ));
+        let unsafe_url = mock_oauth_endpoint(Some((200, r#"{"user_code":"FIXTURE-CODE","device_code":"private","verification_uri":"https://microsoft.com.evil.invalid/devicelogin","expires_in":900,"interval":5}"#.into())), Duration::ZERO);
+        assert!(matches!(
+            begin_login_at(&oauth_test_client(Duration::from_secs(1)), &unsafe_url).await,
+            Err(AuthError::InvalidVerificationUri)
+        ));
+    }
+
+    #[tokio::test]
+    async fn device_code_request_handles_http_errors_disconnect_and_timeout() {
+        let denied = mock_oauth_endpoint(
+            Some((
+                400,
+                r#"{"error":"invalid_client","error_description":"redacted fixture detail"}"#
+                    .into(),
+            )),
+            Duration::ZERO,
+        );
+        let error = match begin_login_at(&oauth_test_client(Duration::from_secs(1)), &denied).await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("expected rejected fixture response"),
+        };
+        assert!(matches!(error, AuthError::OAuth(ref code) if code == "invalid_client"));
+        assert!(!error.to_string().contains("redacted fixture detail"));
+        let server_error = mock_oauth_endpoint(Some((500, "not-json".into())), Duration::ZERO);
+        assert!(
+            matches!(begin_login_at(&oauth_test_client(Duration::from_secs(1)), &server_error).await, Err(AuthError::OAuth(code)) if code == "HTTP 500")
+        );
+        let disconnected = mock_oauth_endpoint(None, Duration::ZERO);
+        assert!(matches!(
+            begin_login_at(&oauth_test_client(Duration::from_secs(1)), &disconnected).await,
+            Err(AuthError::Http(_)) | Err(AuthError::Timeout)
+        ));
+        let delayed = mock_oauth_endpoint(Some((200, r#"{"user_code":"FIXTURE-CODE","device_code":"private","expires_in":900,"interval":5}"#.into())), Duration::from_millis(200));
+        assert!(matches!(
+            begin_login_at(&oauth_test_client(Duration::from_millis(40)), &delayed).await,
+            Err(AuthError::Timeout)
+        ));
+    }
+
+    #[tokio::test]
+    async fn device_code_poll_maps_pending_slowdown_expiry_denial_and_success() {
+        let client = oauth_test_client(Duration::from_secs(1));
+        let mut expired = pending_fixture();
+        expired.acquired_at_unix = now_unix().saturating_sub(expired.expires_in);
+        assert!(matches!(
+            poll_device_code_at(&client, &mut expired, "http://127.0.0.1:1/oauth").await,
+            Err(AuthError::Expired)
+        ));
+        for (code, expected) in [
+            ("authorization_pending", "Waiting for user"),
+            ("slow_down", "slow_down"),
+            ("expired_token", "Device code expired"),
+            ("access_denied", "authorization_declined"),
+            ("authorization_declined", "authorization_declined"),
+        ] {
+            let body =
+                format!(r#"{{"error":"{code}","error_description":"ignored fixture detail"}}"#);
+            let endpoint = mock_oauth_endpoint(Some((400, body)), Duration::ZERO);
+            let error = match poll_device_code_at(&client, &mut pending_fixture(), &endpoint).await
+            {
+                Err(error) => error,
+                Ok(_) => panic!("expected OAuth fixture state"),
+            };
+            assert_eq!(error.to_string(), expected);
+            assert!(!error.to_string().contains("ignored fixture detail"));
+        }
+        let endpoint = mock_oauth_endpoint(Some((200, r#"{"access_token":"fixture-access-token","refresh_token":"fixture-refresh-token","expires_in":3600}"#.into())), Duration::ZERO);
+        let mut pending = pending_fixture();
+        poll_device_code_at(&client, &mut pending, &endpoint)
+            .await
+            .unwrap();
+        assert_eq!(
+            pending.access_token.as_deref(),
+            Some("fixture-access-token")
+        );
+    }
+
+    #[tokio::test]
+    async fn device_code_poll_handles_server_error_invalid_payload_and_timeout() {
+        let client = oauth_test_client(Duration::from_secs(1));
+        let server_error = mock_oauth_endpoint(Some((503, "not-json".into())), Duration::ZERO);
+        assert!(
+            matches!(poll_device_code_at(&client, &mut pending_fixture(), &server_error).await, Err(AuthError::OAuth(code)) if code == "HTTP 503")
+        );
+        let invalid =
+            mock_oauth_endpoint(Some((200, r#"{"expires_in":3600}"#.into())), Duration::ZERO);
+        assert!(matches!(
+            poll_device_code_at(&client, &mut pending_fixture(), &invalid).await,
+            Err(AuthError::InvalidResponse)
+        ));
+        let delayed = mock_oauth_endpoint(
+            Some((
+                200,
+                r#"{"access_token":"fixture","expires_in":3600}"#.into(),
+            )),
+            Duration::from_millis(200),
+        );
+        assert!(matches!(
+            poll_device_code_at(
+                &oauth_test_client(Duration::from_millis(40)),
+                &mut pending_fixture(),
+                &delayed
+            )
+            .await,
+            Err(AuthError::Timeout)
+        ));
     }
 
     #[test]

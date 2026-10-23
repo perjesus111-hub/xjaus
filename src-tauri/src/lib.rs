@@ -27,7 +27,7 @@ pub struct AppState {
     cancellations: connection_cancel::ConnectionCancellation,
     stream_owner: Mutex<Option<String>>,
     client: Client,
-    pending: Mutex<Option<PendingLogin>>,
+    pending: Mutex<Option<(String, PendingLogin)>>,
     tokens: Mutex<Option<TokenBundle>>,
     stream: Mutex<Option<SessionClient>>,
     stream_operation: tokio::sync::Mutex<()>,
@@ -71,6 +71,19 @@ struct Status {
 fn state_error() -> String {
     "Authentication state is unavailable".into()
 }
+
+async fn complete_login_timed(
+    client: &Client,
+    pending: &PendingLogin,
+) -> Result<TokenBundle, auth::AuthError> {
+    tokio::time::timeout(
+        Duration::from_secs(60),
+        auth::complete_login_from_device_code(client, pending),
+    )
+    .await
+    .unwrap_or(Err(auth::AuthError::Timeout))
+}
+
 /// Estado unificado post-auth (usado por refresh/poll_login/load/persist).
 fn auth_status_after(state: &State<'_, AppState>) -> Status {
     Status {
@@ -205,58 +218,75 @@ pub fn logout_state(
 }
 
 #[tauri::command]
-async fn begin_login(state: State<'_, AppState>) -> Result<auth::LoginStart, String> {
-    let epoch = state.auth_gate.capture()?;
-    let (login, pending) = auth::begin_login(&state.client)
-        .await
-        .map_err(|e| e.to_string())?;
+async fn begin_login(
+    attempt_id: String,
+    state: State<'_, AppState>,
+) -> Result<auth::LoginStart, String> {
+    let (epoch, ()) = state.auth_gate.begin_attempt_with(&attempt_id, || {
+        *state.pending.lock().map_err(|_| state_error())? = None;
+        Ok(())
+    })?;
+    let mut invalidated = state.auth_gate.subscribe();
+    let (login, pending) = tokio::select! {
+        _ = state.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+        result = auth::begin_login(&state.client) => result.map_err(|e| e.to_string())?,
+    };
     state.auth_gate.publish_pending(epoch, || {
-        *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+        *state.pending.lock().map_err(|_| state_error())? = Some((attempt_id, pending));
         Ok(())
     })?;
     Ok(login)
 }
 
 #[tauri::command]
-async fn begin_login_window(state: State<'_, AppState>) -> Result<auth::LoginStart, String> {
-    let login = begin_login(state).await?;
-    Ok(login)
+async fn begin_login_window(
+    attempt_id: String,
+    state: State<'_, AppState>,
+) -> Result<auth::LoginStart, String> {
+    begin_login(attempt_id, state).await
 }
 
 #[tauri::command]
-async fn poll_login(state: State<'_, AppState>) -> Result<Status, String> {
-    // Tomar el pending SIN mantener el lock durante el await (MutexGuard no es Send).
-    let (epoch, pending) = {
-        let _commit = state.auth_gate.lock_commit()?;
-        let epoch = state.auth_gate.current();
+fn cancel_login(attempt_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.auth_gate.cancel_attempt_with(&attempt_id, || {
+        let mut pending = state.pending.lock().map_err(|_| state_error())?;
+        if pending
+            .as_ref()
+            .is_some_and(|(active_id, _)| active_id == &attempt_id)
+        {
+            *pending = None;
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn poll_login(attempt_id: String, state: State<'_, AppState>) -> Result<Status, String> {
+    let (epoch, mut pending) = state.auth_gate.with_attempt(&attempt_id, |epoch| {
         let mut guard = state.pending.lock().map_err(|_| state_error())?;
-        (epoch, guard.take())
-    };
+        match guard.take() {
+            Some((pending_id, pending)) if pending_id == attempt_id => Ok((epoch, pending)),
+            Some(other) => {
+                *guard = Some(other);
+                Err(auth_gate::INVALIDATED.into())
+            }
+            None => Err("Start sign-in first".into()),
+        }
+    })?;
 
-    let Some(mut pending) = pending else {
-        // Sin pending: ¿quizá ya se completó en un poll anterior?
-        let authed = state.tokens.lock().map_err(|_| state_error())?.is_some();
-        return if authed {
-            Ok(Status {
-                authenticated: true,
-                catalog_account_scope: state
-                    .tokens
-                    .lock()
-                    .map_err(|_| state_error())?
-                    .as_ref()
-                    .and_then(|t| account_scope::catalog_account_scope(&t.web_token)),
-                account: "Xbox account".into(),
-                storage: "secure vault".into(),
-            })
-        } else {
-            Err("Start sign-in first".into())
-        };
+    let mut invalidated = state.auth_gate.subscribe();
+    let result = tokio::select! {
+        _ = state.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+        result = poll_device_code(&state.client, &mut pending) => result,
     };
-
-    match poll_device_code(&state.client, &mut pending).await {
+    match result {
         Ok(_) | Err(auth::AuthError::AlreadyVerified) => {
-            // Usuario autenticado (ahora o en un poll anterior): completar el flujo.
-            match auth::complete_login_from_device_code(&state.client, &pending).await {
+            let completion = tokio::select! {
+                _ = state.auth_gate.invalidated(&mut invalidated, epoch) => return Err(auth_gate::INVALIDATED.into()),
+                result = complete_login_timed(&state.client, &pending) => result,
+            };
+            match completion {
                 Ok(tokens) => {
                     let saved = state.auth_gate.commit(epoch, || {
                         let saved = vault::save(&tokens);
@@ -266,12 +296,9 @@ async fn poll_login(state: State<'_, AppState>) -> Result<Status, String> {
                     })?;
                     let storage = match saved {
                         Ok(()) => "keyring",
-                        Err(error) if error.contains("fallback passphrase required") => {
-                            "passphrase-required"
-                        }
+                        Err(error) if error.contains("fallback passphrase required") => "passphrase-required",
                         Err(_) => return Err(
-                            "Authentication succeeded, but secure storage failed; tokens remain only in memory"
-                                .into(),
+                            "Authentication succeeded, but secure storage failed; tokens remain only in memory".into(),
                         ),
                     };
                     Ok(Status {
@@ -281,44 +308,44 @@ async fn poll_login(state: State<'_, AppState>) -> Result<Status, String> {
                             .lock()
                             .map_err(|_| state_error())?
                             .as_ref()
-                            .and_then(|t| account_scope::catalog_account_scope(&t.web_token)),
+                            .and_then(|tokens| {
+                                account_scope::catalog_account_scope(&tokens.web_token)
+                            }),
                         account: "Xbox account".into(),
                         storage: storage.into(),
                     })
                 }
-                Err(e) => {
-                    // El intercambio falló pero el access token sigue en pending y
-                    // es válido: conservarlo para reintentar en el siguiente poll.
+                Err(error) => {
                     state.auth_gate.publish_pending(epoch, || {
-                        *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+                        *state.pending.lock().map_err(|_| state_error())? =
+                            Some((attempt_id.clone(), pending));
                         Ok(())
                     })?;
-                    Err(e.to_string())
+                    Err(error.to_string())
                 }
             }
         }
-        Err(auth::AuthError::Pending) | Err(auth::AuthError::SlowDown) => {
-            // AÚN NO autenticado: devolver el pending para el siguiente poll.
+        Err(error @ (auth::AuthError::Pending | auth::AuthError::SlowDown)) => {
             state.auth_gate.publish_pending(epoch, || {
-                *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+                *state.pending.lock().map_err(|_| state_error())? =
+                    Some((attempt_id.clone(), pending));
                 Ok(())
             })?;
-            Err("Waiting for user".into())
+            Err(error.to_string())
         }
-        Err(auth::AuthError::Expired) => {
+        Err(error @ (auth::AuthError::Expired | auth::AuthError::Denied)) => {
             state.auth_gate.publish_pending(epoch, || {
                 *state.pending.lock().map_err(|_| state_error())? = None;
                 Ok(())
             })?;
-            Err("Device code expired; start sign-in again".into())
+            Err(error.to_string())
         }
-        Err(e) => {
-            // Error real (red, OAuth): conservar pending para reintento manual.
+        Err(error) => {
             state.auth_gate.publish_pending(epoch, || {
-                *state.pending.lock().map_err(|_| state_error())? = Some(pending);
+                *state.pending.lock().map_err(|_| state_error())? = Some((attempt_id, pending));
                 Ok(())
             })?;
-            Err(e.to_string())
+            Err(error.to_string())
         }
     }
 }
@@ -643,23 +670,46 @@ async fn list_cloud_titles(state: State<'_, AppState>) -> Result<Value, String> 
 #[tauri::command]
 async fn catalog_products(
     product_ids: Vec<String>,
+    language: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
     let _ = snapshot_tokens(&state)?;
-    catalog::catalog_products(&state.client, &product_ids).await
+    catalog::catalog_products(
+        &state.client,
+        &product_ids,
+        language.as_deref().unwrap_or("es"),
+    )
+    .await
 }
 
 #[tauri::command]
-async fn list_gamepass_catalog(state: State<'_, AppState>) -> Result<Value, String> {
+async fn list_gamepass_catalog(
+    language: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
     let _ = snapshot_tokens(&state)?;
-    get_json(&state.client, "https://catalog.gamepass.com/sigls/v2?id=f13cf6b4-57e6-4459-89df-6aec18cf0538&market=MX&language=es-MX".into(), None, None, &[("Accept-Language", "es-MX, es;q=0.9, en;q=0.1")]).await
+    let (locale, accept_language) =
+        catalog::catalog_request_locale(language.as_deref().unwrap_or("es"))?;
+    let url = format!(
+        "https://catalog.gamepass.com/sigls/v2?id=f13cf6b4-57e6-4459-89df-6aec18cf0538&market=MX&language={locale}"
+    );
+    get_json(
+        &state.client,
+        url,
+        None,
+        None,
+        &[("Accept-Language", accept_language)],
+    )
+    .await
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StreamStartArgs {
     kind: SessionKind,
     target: String,
     profile: Option<DeviceProfilePatch>,
+    streaming_locale: Option<String>,
 }
 
 fn take_stream(state: &State<'_, AppState>) -> Result<SessionClient, String> {
@@ -706,15 +756,9 @@ async fn start_stream(
     };
     let host = region_host(stream_token)?;
     let token = token_text(stream_token, "gsToken")?;
-    let mut stream = SessionClient::new(
-        state.client.clone(),
-        host,
-        token,
-        args.kind,
-        args.profile
-            .map(DeviceProfilePatch::apply)
-            .unwrap_or_default(),
-    );
+    let profile =
+        session::profile_for_stream(args.kind, args.profile, args.streaming_locale.as_deref())?;
+    let mut stream = SessionClient::new(state.client.clone(), host, token, args.kind, profile);
     stream.set_account_scope(account_scope::catalog_account_scope(&bundle.web_token))?;
     // Ambos modos exigen lpt para el POST /connect en ReadyToConnect:
     // - Home: xhome (Remote Play). - Cloud: MSAL token auditado en xcloudapi.ts.
@@ -876,6 +920,7 @@ pub fn run() {
             begin_login,
             begin_login_window,
             poll_login,
+            cancel_login,
             complete_login,
             persist_session,
             load_session,
@@ -902,4 +947,37 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod stream_start_locale_tests {
+    use super::*;
+
+    #[test]
+    fn tauri_start_args_deserialize_streaming_locale_as_a_separate_cloud_preference() {
+        for requested in ["en-US", "es-MX", "en-GB"] {
+            let args = serde_json::from_value::<StreamStartArgs>(serde_json::json!({
+                "kind": "cloud",
+                "target": "title-fixture",
+                "profile": {"width": 2560},
+                "streamingLocale": requested
+            }))
+            .unwrap();
+            assert_eq!(args.streaming_locale.as_deref(), Some(requested));
+            let profile = session::profile_for_stream(
+                args.kind,
+                args.profile,
+                args.streaming_locale.as_deref(),
+            )
+            .unwrap();
+            assert_eq!(profile.locale, requested);
+            assert_eq!(
+                profile
+                    .play_payload(SessionKind::Cloud, "title-fixture")
+                    .pointer("/settings/market")
+                    .and_then(serde_json::Value::as_str),
+                Some("ES-MX")
+            );
+        }
+    }
 }

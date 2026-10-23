@@ -2,7 +2,7 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import html from '../index.html?raw';
 const f=vi.hoisted(()=>({write:vi.fn(async(_code:string)=>{}),invoke:vi.fn(async(cmd:string)=>cmd==='begin_login_window'?{user_code:'REAL-42',verification_uri:'https://microsoft.com/link',verification_uri_complete:'https://microsoft.com/link',interval:5,expires_in:60}:{authenticated:false})}));
-vi.mock('./backend',()=>({invokeBackend:f.invoke,openExternalUrl:vi.fn(async()=>{})}));
+vi.mock('./backend',()=>({invokeBackend:f.invoke,openExternalUrl:vi.fn(async()=>{}),openMicrosoftVerificationUrl:vi.fn(async()=>{}),copyToClipboard:async(text:string)=>navigator.clipboard.writeText(text)}));
 afterEach(()=>{window.dispatchEvent(new Event('pagehide'));vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 it('copies the real pairing code using an accessible button and localized temporary feedback',async()=>{
  vi.useFakeTimers();
