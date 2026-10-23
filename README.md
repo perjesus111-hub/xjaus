@@ -37,7 +37,7 @@ Captured from the packaged Electron AppImage on Linux (XJAUS 1.2.0). Account det
 
 ## Packages
 
-Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS EXE installer and an MSI installer for Windows x64**. The [XJAUS 1.2.1 GitHub Release page](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1) will host the downloads when publication is complete. Do not use older Tauri bundles as substitutes for the Electron release.
+Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS EXE installer and an MSI installer for Windows x64**. Downloads are available from the [XJAUS 1.2.1 GitHub Release](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1). Do not use older Tauri bundles as substitutes for the Electron release.
 
 ### AppImage
 
