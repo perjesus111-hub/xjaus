@@ -1966,6 +1966,7 @@ mod tests {
             stream.set_account_scope(Some("a".repeat(64))).unwrap();
             stream.host = "fixture.gssv-play-prod.xboxlive.com".into();
             let root = std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
                 .map(std::path::PathBuf::from)
                 .unwrap()
                 .join(".cache/xjaus-locale-test")

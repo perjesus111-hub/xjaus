@@ -1,6 +1,6 @@
 # Cloud Gaming: routing del idioma solicitado
 
-Estado: corrección preparada en `release/xjaus-1.2.1`; **la aceptación por el servicio y el idioma de Age of Empires IV siguen pendientes de una nueva prueba real autorizada**. La sesión previa confirmó español incluso con la UI en inglés; no se reutiliza esa autorización para iniciar otra sesión.
+Estado: corrección preparada en `release/xjaus-1.2.1`. El 22 de octubre de 2026, un usuario informó una prueba real comparativa del mismo juego: al elegir Español el juego apareció en español; al elegir English apareció en inglés. Es evidencia observacional del usuario, sin captura ni telemetría adjunta al mensaje. No implica que XJAUS fuerce el idioma interno de todos los títulos. La persistencia tras reiniciar XJAUS se valida por separado.
 
 ## Preferencias separadas
 
@@ -35,14 +35,36 @@ La documentación pública enumera `en-US`, `es-MX`, `es-ES` y `es-AR`; los serv
 
 | Flujo | Preferencia UI | Locale solicitado | Mercado de sesión | Resultado |
 |---|---|---|---|---|
-| Cloud Gaming | Español | `es-MX` | `ES-MX` sin cambio | PASS en mapper, payload y cabecera local/mock; juego real pendiente |
-| Cloud Gaming | English | `en-US` | `ES-MX` sin cambio | PASS en mapper, payload y cabecera local/mock; juego real pendiente |
-| Cloud Gaming | Auto | locale de sistema; casos `es-MX` y `en-GB` | `ES-MX` sin cambio | PASS en mapper, payload y cabecera local/mock; juego real pendiente |
-| Home / Remote Play | cualquiera | comportamiento previo `es-MX` | `ES-MX` sin cambio | PASS en pruebas de regresión locales; no se hizo sesión real nueva |
+| Cloud Gaming | Español | `es-MX` | `ES-MX` sin cambio | PASS en mapper/payload/cabecera local; el usuario reporta que el mismo juego apareció en español |
+| Cloud Gaming | English | `en-US` | `ES-MX` sin cambio | PASS en mapper/payload/cabecera local; el usuario reporta que el mismo juego apareció en inglés |
+| Cloud Gaming | Auto | locale de sistema; casos `es-MX` y `en-GB` | `ES-MX` sin cambio | PASS en mapper, payload y cabecera local/mock; resultado real de título no reportado para Auto |
+| Home / Remote Play | cualquiera | comportamiento previo `es-MX` | `ES-MX` sin cambio | PASS en pruebas de regresión locales; la sesión real nueva se registra aparte |
 
-## Validación pendiente
+## Evidencia real reportada por el usuario
 
-La corrección aún **no** demuestra que el juego inicie en inglés. Antes de publicar hace falta una nueva prueba real autorizada de Age of Empires IV: Anniversary Edition en Cloud Gaming, primero con la app en español y luego con la app en inglés, registrando locale solicitado y pantalla inicial observada. Si el juego sigue en español, la siguiente investigación debe limitarse a las opciones internas de idioma del título, solo con permiso para iniciar esa sesión y navegar sus menús. Hasta entonces no se afirma que el idioma interno esté corregido.
+El 22 de octubre de 2026, el usuario informó que probó el mismo juego con ambas opciones: Español → el juego apareció en español; English → el mismo juego apareció en inglés. Se registra como observación real aportada por el usuario. No se inventan hora, versión exacta cargada, telemetría ni capturas, pues no acompañaron el reporte. El resultado observado aplica a esa prueba y no garantiza el idioma de todos los títulos.
+
+## Validación real en XJAUS 1.2.1 (23 de octubre de 2026)
+
+- **Persistencia del idioma: PASS.** En una instancia desechable del payload AppImage extraído, se eligió Español, se cerró el proceso y se abrió uno nuevo en Xvfb. Tras el reinicio, el estado leído de la aplicación fue `languagePreference=es`, selector `es` y `document.documentElement.lang=es`; la captura `language-es.png` muestra el selector Español. Esto verifica la preferencia de XJAUS tras reiniciar, no una garantía de idioma de cada juego.
+- **Cloud Gaming / transporte: PASS parcial.** Se inició una sesión real de Age of Empires IV desde la instancia 1.2.1. El video llegó a 1920×1080, `readyState=4`, `hasStream=true` y `currentTime` avanzó de aproximadamente 65.19 a 72.84. Dos muestras de telemetría mostraron aproximadamente 13–15 Mbps recibidos, ~60 FPS, RTT de 13–17 ms, pérdida 0% y decodificación ~5 ms. Esto verifica transporte y recepción sostenida de video.
+- **Juego / demostración: BLOQUEADO por confirmación.** El primer cuadro del juego era una pantalla inicial de accesibilidad en español. No se pulsó «Guardar y continuar» porque podría persistir preferencias del juego sin aprobación explícita. La sesión se cerró con el control de XJAUS; el video volvió a `readyState=0`, sin stream. Por ello esta prueba no llegó a gameplay y no se generó un video demostrativo de gameplay. `reddit-demo/cloud-settings-es.png` es un recorte real y revisado que excluye el identificador visible en el cuadro original.
+- **Remote Play: NO PASS.** Se intentó una conexión real desde la consola detectada como `connectedstandby` y con botón de conexión habilitado. Tras aproximadamente 45 segundos la aplicación volvió al dashboard; no hubo video (`readyState=0`, dimensiones 0×0) y la consola seguía en `connectedstandby`. La causa exacta no quedó capturada; Remote Play no se declara funcional.
+- **Interfaz de inicio de sesión: UI revisada; OAuth NO probado.** Se inspeccionó la pantalla de inicio de sesión del instalador Windows bajo Wine. No se inició un nuevo flujo OAuth ni se introdujo código/credencial; una prueba real de device-code requiere que el usuario ingrese y apruebe el código personalmente.
+- **Mercado/región: sin cambios de cuenta.** No se modificó la región de cuenta, consola ni sistema. Las pruebas del código confirman que `settings.market` se mantiene en `ES-MX` y no se deriva del idioma; DisplayCatalog conserva `market=MX`. El mercado efectivo de la cuenta o la respuesta del servicio no se verificó en vivo.
+
+## Matriz automatizada y real
+
+| Flujo | Preferencia UI | Locale solicitado | Mercado de sesión | Resultado |
+|---|---|---|---|---|
+| Cloud Gaming | Español | `es-MX` | `ES-MX` independiente | PASS en mapper/payload/cabecera; el usuario reportó el mismo juego en español; stream real recibió video y mostró la pantalla inicial del juego en español |
+| Cloud Gaming | English | `en-US` | `ES-MX` independiente | PASS en mapper/payload/cabecera; el usuario reportó el mismo juego en inglés; no se repitió una segunda sesión por la pantalla de configuración inicial |
+| Auto | locale del sistema | locale regional válido | `ES-MX` independiente | PASS en mapper/payload/cabecera local/mock; resultado de título no comprobado |
+| Home / Remote Play | cualquiera | comportamiento previo `es-MX` | `ES-MX` independiente | PASS en regresiones locales; prueba real de Remote Play no logró obtener video |
+
+## Límite de interpretación
+
+La selección de idioma de XJAUS se pasa como locale solicitado al Cloud Gaming, y el resultado observado del mismo juego fue reportado por el usuario. XJAUS no fuerza opciones internas del título. La prueba nueva confirma transporte de Cloud Gaming y persistencia de la preferencia de XJAUS, pero quedó detenida antes del gameplay por una confirmación de primera ejecución. Remote Play y el mercado efectivo del servicio permanecen sin validar en vivo.
 
 ## Sources
 

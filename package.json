@@ -7,7 +7,7 @@
   },
   "main": "electron/main.cjs",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,7 @@
     "electron:run": "npm run build && npm run electron:build-backend && electron . --class=io.github.xjaus.xjaus",
     "preview": "vite preview",
     "tauri": "tauri",
-    "build:win": "electron-builder --win nsis --x64",
+    "build:win": "electron-builder --win --x64 --publish never",
     "prebuild:win": "npm run build && npm run electron:build-backend:win",
     "electron:build-backend:win": "node scripts/build-windows.cjs",
     "electron:build-backend:linux": "node scripts/build-linux.cjs",
@@ -60,6 +60,12 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "resources/icons/xjaus.ico",
@@ -79,6 +85,12 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
+      "artifactName": "XJAUS-${version}-win-x64-setup.${ext}"
+    },
+    "msi": {
+      "oneClick": false,
+      "perMachine": false,
+      "upgradeCode": "{0E62648A-3DF9-5B66-9869-BA2743BAE731}",
       "artifactName": "XJAUS-${version}-win-x64-setup.${ext}"
     },
     "linux": {
