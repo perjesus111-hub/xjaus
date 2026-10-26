@@ -21,7 +21,8 @@ XJAUS pairs a controller-oriented Electron interface with a Rust sidecar for aut
 - **Dynamic Home with a daily featured carousel** built from the real, entitled Cloud Gaming catalog (six art-backed titles per day), automatic rotation and full mouse/keyboard/gamepad navigation. The banner dialog offers Play now (reusing the validated cloud connect flow), add/remove favorite and Cancel; it never starts a stream by itself.
 - **Favorites shared across Home and Cloud Gaming** through one library, synchronized immediately in both directions.
 - **Settings organized in six sections** — General, Streaming, Video & audio, Interface, Diagnostics, About — with a persisted Interface-preferences namespace kept separate from streaming settings, and a Diagnostics section whose "Copy technical report" action redacts credential-like values before the report leaves the machine.
-- **In-game stream menu** reachable with the controller during playback.
+- **Fullscreen/window controls** available with F11, from the dashboard, streaming toolbar and in-game menu. Escape and B continue to close the local menu without disconnecting. Normal geometry and maximized state are restored only when they fit an available display work area; Wayland remains compositor-authoritative for final positioning.
+- **Aspect-ratio-preserving video** via `object-fit: contain`: XJAUS does not stretch or crop a 16:9 stream to promise native ultrawide playback.
 
 ## Screenshots
 
@@ -37,7 +38,7 @@ Captured from the packaged Electron AppImage on Linux (XJAUS 1.2.0). Account det
 
 ## Packages
 
-Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS EXE installer and an MSI installer for Windows x64**. Downloads are available from the [XJAUS 1.2.1 GitHub Release](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1). Do not use older Tauri bundles as substitutes for the Electron release.
+Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS EXE installer and an MSI installer for Windows x64**. Downloads will be available from the **XJAUS 1.2.2 GitHub Release** after publication. Do not use older Tauri bundles as substitutes for the Electron release.
 
 ### AppImage
 

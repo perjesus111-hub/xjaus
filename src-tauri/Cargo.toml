@@ -1,6 +1,6 @@
 [package]
 name = "xjaus-backend"
-version = "1.2.1"
+version = "1.2.2"
 description = "High-performance Xbox Cloud Gaming & Remote Play client for Linux"
 license = "GPL-3.0-only"
 authors = ["XJAUS contributors"]
