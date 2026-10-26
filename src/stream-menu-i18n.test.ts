@@ -12,7 +12,7 @@ it('updates the open stream menu and gamepad hints immediately when the locale c
   document.body.innerHTML = '<section id="player"><video></video></section>';
   i18n.setPreference('es');
   const menu = mountStreamMenu(document.querySelector('#player')!, {
-    setModal: vi.fn(), toggleTelemetry: vi.fn(), disconnect: vi.fn(async () => {}), exit: vi.fn(async () => {}),
+    setModal: vi.fn(), toggleTelemetry: vi.fn(), toggleWindow: vi.fn(), disconnect: vi.fn(async () => {}), exit: vi.fn(async () => {}),
   });
   menu.toggle();
   const text = (selector: string) => document.querySelector(selector)?.textContent?.trim();

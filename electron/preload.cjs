@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('xjaus', Object.freeze({
     return ipcRenderer.invoke('xjaus:invoke', command, args);
   },
   fullscreen(action) {
-    if (!['enter', 'exit', 'toggle', 'restore'].includes(action)) return Promise.reject(new Error('Acción fullscreen no permitida'));
+    if (!['enter', 'exit', 'toggle', 'restore', 'session-enter', 'session-restore'].includes(action)) return Promise.reject(new Error('Acción fullscreen no permitida'));
     return ipcRenderer.invoke('xjaus:fullscreen', action);
   },
   openExternal(url) { return ipcRenderer.invoke('xjaus:open-external', url); },
