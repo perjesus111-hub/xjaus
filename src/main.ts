@@ -9,6 +9,8 @@ import { removeUnfavoritedCards } from './favorite-focus';
 import { ViewFocusIntent } from './ten-foot';
 localizeDocument();
 document.documentElement.classList.add("i18n-ready");
+const disposeWindowModeControls = bindWindowModeControls(document, () => requestPlayerFullscreen('toggle'));
+window.addEventListener('pagehide', disposeWindowModeControls, { once: true });
 // UI-only preferences (density/focus/cover titles/stats autoplay): applied at
 // startup, before panels paint; localStorage-only, never streamed to the engine.
 let uiStorage: Pick<Storage, "getItem" | "setItem"> | undefined;
@@ -45,7 +47,8 @@ import { showStreamLoading, bindLoadingPlayback, disposeStreamLoading } from "./
 import { XboxSessionCoordinator, XboxWebRtcController } from "./webrtc";
 import { extractConsoles, resolveHomeTarget, type ConsoleItem } from "./ui-state";
 
-import { bindPlayerFullscreen } from "./fullscreen";
+import { bindPlayerFullscreen, requestPlayerFullscreen } from "./fullscreen";
+import { bindWindowModeControls } from './window-mode-controls';
 import { createProfilePanel, type XboxProfile } from "./profile-panel";
 import { sanitizeDiagnostics } from './diagnostics';
 import { mountStreamMenu } from "./stream-menu";
@@ -684,7 +687,7 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
     syncStatsVisibility();
     const toggleTelemetry=()=>{if(!active() || !overlay.hidden)return;statsRequested=!statsRequested;statsPanel.hidden=!statsRequested;syncStatsVisibility();};
     document.addEventListener('visibilitychange',syncStatsVisibility);
-    const menu=mountStreamMenu(playerScreen,{setModal:value=>{controller.gamepad.setModal(value);if(!value)hud.reveal();},toggleTelemetry,disconnect:stopGame,exit:async()=>{await invoke('app_exit');},
+    const menu=mountStreamMenu(playerScreen,{setModal:value=>{controller.gamepad.setModal(value);if(!value)hud.reveal();},toggleTelemetry,toggleWindow:()=>requestPlayerFullscreen('toggle'),disconnect:stopGame,exit:async()=>{await invoke('app_exit');},
       screenshot:()=>{const frame=captureVideoFrame(video);if(!frame){notice(()=>t('screenshotFailed'));return;}const link=document.createElement('a');link.href=frame;link.download=`xjaus-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;link.click();notice(()=>t('screenshotSaved'));},
       vibration:async()=>{const result=await testVibration(()=>[...navigator.getGamepads()]);notice(()=>t(result==='ok'?'vibrationTested':'vibrationUnavailable'));}});
     const toggleMenu=()=>{if(active() && overlay.hidden)menu.toggle();};

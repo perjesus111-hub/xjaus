@@ -1,6 +1,6 @@
 import {bindText,t} from './i18n';
 import {focusGamepad} from './ten-foot';
-export type StreamMenuActions={setModal:(value:boolean)=>void;toggleTelemetry:()=>void;disconnect:()=>Promise<void>;exit:()=>Promise<void>;screenshot?:()=>void;vibration?:()=>Promise<void>};
+export type StreamMenuActions={setModal:(value:boolean)=>void;toggleTelemetry:()=>void;toggleWindow:()=>void;disconnect:()=>Promise<void>;exit:()=>Promise<void>;screenshot?:()=>void;vibration?:()=>Promise<void>};
 export function mountStreamMenu(parent:HTMLElement,actions:StreamMenuActions) {
  const dialog=document.createElement('dialog');dialog.className='stream-menu';dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','stream-menu-title');
  const head=document.createElement('div');head.className='stream-menu-head';
@@ -19,13 +19,14 @@ export function mountStreamMenu(parent:HTMLElement,actions:StreamMenuActions) {
   if(busy||disposed)return;
   if(action==='resume'){close();return;}
   if(action==='telemetry'){actions.toggleTelemetry();return;}
+  if(action==='window'){actions.toggleWindow();return;}
   if(action==='screenshot'){actions.screenshot?.();return;}
   if(action==='vibration'){await actions.vibration?.();return;}
   busy=true;buttons.forEach(b=>b.disabled=true);
   try{await actions.disconnect();if(action==='exit')await actions.exit();}
   finally{busy=false;if(!disposed){buttons.forEach(b=>b.disabled=false);close();}}
  };
- for(const [action,key] of [['resume','resumeStream'],['screenshot','screenshotItem'],['vibration','testVibration'],['telemetry','telemetry'],['disconnect','disconnectStream'],['exit','exitApp']] as const){
+ for(const [action,key] of [['resume','resumeStream'],['window','windowedMode'],['screenshot','screenshotItem'],['vibration','testVibration'],['telemetry','telemetry'],['disconnect','disconnectStream'],['exit','exitApp']] as const){
   const button=document.createElement('button');button.type='button';button.dataset.action=action;bindText(button,()=>t(key));button.addEventListener('click',()=>{void run(action).catch(()=>{});});buttons.push(button);dialog.append(button);
  }
  const hints=document.createElement('div');hints.className='stream-menu-hints';
@@ -46,7 +47,7 @@ export function mountStreamMenu(parent:HTMLElement,actions:StreamMenuActions) {
  const onDialogFocusOut=(event:FocusEvent)=>{const target=event.target as HTMLElement;if(target.classList?.contains('gamepad-focus')&&!dialog.contains(event.relatedTarget as Node|null))clearPadFocus();};
  const keydown=(event:KeyboardEvent)=>{
   if(!opened)return;
-  if(event.ctrlKey&&event.key==='F11')return;
+  if((event.ctrlKey&&event.key==='F11') || (event.key==='F11'&&!event.ctrlKey))return;
   event.preventDefault();event.stopImmediatePropagation();
   if(event.repeat)return;
   if(event.key==='Escape'){close();return;}

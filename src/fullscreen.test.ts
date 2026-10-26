@@ -5,10 +5,10 @@ it('enters once on playing; handles keys; disposes listeners and restores',()=>{
  const video=new EventTarget(); const keys=new EventTarget(); const send=vi.fn();
  const close=bindPlayerFullscreen(video as HTMLVideoElement,keys,send);
  video.dispatchEvent(new Event('playing')); video.dispatchEvent(new Event('playing'));
- expect(send.mock.calls).toEqual([['enter']]);
+ expect(send.mock.calls).toEqual([['session-enter']]);
  const key=(name:string)=>{const e=new Event('keydown',{cancelable:true});Object.assign(e,{key:name,repeat:false});keys.dispatchEvent(e);};
  key('F11');key('Escape');expect(send.mock.calls.slice(1)).toEqual([['toggle'],['exit']]);
- close();close();video.dispatchEvent(new Event('playing'));key('F11');expect(send.mock.calls[send.mock.calls.length-1]).toEqual(['restore']);expect(send).toHaveBeenCalledTimes(4);
+ close();close();video.dispatchEvent(new Event('playing'));key('F11');expect(send.mock.calls[send.mock.calls.length-1]).toEqual(['session-restore']);expect(send).toHaveBeenCalledTimes(4);
 });
 it('Guide menu hold is local, requires 1200ms and does not change wire serialization',()=>{
  const toggle=vi.fn();const hold=new StreamPadGestures(toggle,()=>{});

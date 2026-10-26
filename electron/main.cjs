@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, shell, session, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, clipboard, screen } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { allowedCommand, trustedFrame, externalUrl, externalLoginUrl, allowedClipboardText } = require('./security.cjs');
@@ -27,6 +28,21 @@ if (process.platform === 'linux') {
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const { createFullscreenController } = require('./fullscreen.cjs');
+const { restoreWindowState, persistWindowState } = require('./window-state.cjs');
+const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json');
+const windowStateStore = {
+  get(key) {
+    if (key !== 'windowState') return undefined;
+    try { return JSON.parse(fs.readFileSync(windowStatePath(), 'utf8')).windowState; } catch { return undefined; }
+  },
+  set(key, value) {
+    if (key !== 'windowState') return;
+    try {
+      fs.mkdirSync(app.getPath('userData'), { recursive: true });
+      fs.writeFileSync(windowStatePath(), JSON.stringify({windowState:value}), { mode: 0o600 });
+    } catch { /* Window state is optional; never block startup or shutdown. */ }
+  },
+};
 let fullscreen;
 let backend;
 let window;
@@ -130,7 +146,7 @@ ipcMain.handle('xjaus:invoke', (event, command, args) => {
   });
 });
 ipcMain.handle('xjaus:fullscreen', (event, action) => {
-  if (!authorize(event) || !['enter', 'exit', 'toggle', 'restore'].includes(action)) throw new Error('Fullscreen IPC no permitido');
+  if (!authorize(event) || !['enter', 'exit', 'toggle', 'restore', 'session-enter', 'session-restore'].includes(action)) throw new Error('Fullscreen IPC no permitido');
   fullscreen(action);
 });
 ipcMain.handle('xjaus:open-external', async (event, url) => {
@@ -150,8 +166,10 @@ app.whenReady().then(() => {
   console.info('[XJAUS locale]', JSON.stringify({locale: app.getLocale?.(), requested: systemLocale || 'auto', LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES}));
   startBackend();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  const restoredBounds = restoreWindowState(windowStateStore.get('windowState'), screen?.getAllDisplays?.() ?? [], {width:1240,height:800});
+  const restoreMaximized = Boolean(windowStateStore.get('windowState')?.maximized);
   window = new BrowserWindow({
-    width: 1240, height: 800, minWidth: 860, minHeight: 600, title: 'XJAUS',
+    ...restoredBounds, minWidth: 860, minHeight: 600, title: 'XJAUS',
     backgroundColor: '#090a0b', autoHideMenuBar: true, icon: iconPath(app),
     titleBarStyle: 'hidden',
     ...(process.platform !== 'darwin' ? { titleBarOverlay: { color: '#090a0b', symbolColor: '#f4f2ec', height: 40 } } : {}),
@@ -162,6 +180,14 @@ app.whenReady().then(() => {
     },
   });
   fullscreen = createFullscreenController(window);
+  if (restoreMaximized) window.maximize();
+  let stateTimer;
+  const saveWindowState = () => {
+    clearTimeout(stateTimer);
+    stateTimer = setTimeout(() => persistWindowState(windowStateStore, window), 250);
+  };
+  for (const event of ['resize','move','maximize','unmaximize']) window.on?.(event, saveWindowState);
+  window.on?.('close', () => { clearTimeout(stateTimer); persistWindowState(windowStateStore, window); });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => {
     if (url !== pathToFileURL(frontend).href) event.preventDefault();

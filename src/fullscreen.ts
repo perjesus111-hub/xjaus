@@ -1,4 +1,4 @@
-export type FullscreenAction = 'enter' | 'exit' | 'toggle' | 'restore';
+export type FullscreenAction = 'enter' | 'exit' | 'toggle' | 'restore' | 'session-enter' | 'session-restore';
 export function requestPlayerFullscreen(action: FullscreenAction): void {
   const bridge = (window as Window & { xjaus?: { fullscreen?: (action: FullscreenAction) => Promise<void> } }).xjaus;
   void bridge?.fullscreen?.(action).catch(() => undefined);
@@ -7,7 +7,7 @@ export function requestPlayerFullscreen(action: FullscreenAction): void {
 export function bindPlayerFullscreen(video: HTMLVideoElement, keys: EventTarget, send = requestPlayerFullscreen): () => void {
   let entered = false;
   let closed = false;
-  const playing = () => { if (!entered && !closed) { entered = true; send('enter'); } };
+  const playing = () => { if (!entered && !closed) { entered = true; send('session-enter'); } };
   const keydown = (event: Event) => {
     const key = event as KeyboardEvent;
     if (key.ctrlKey || key.defaultPrevented || key.repeat || (key.key !== 'F11' && key.key !== 'Escape')) return;
@@ -21,6 +21,6 @@ export function bindPlayerFullscreen(video: HTMLVideoElement, keys: EventTarget,
     closed = true;
     video.removeEventListener('playing', playing);
     keys.removeEventListener('keydown', keydown);
-    send('restore');
+    send('session-restore');
   };
 }

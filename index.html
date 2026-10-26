@@ -44,6 +44,7 @@
             <kbd class="shoulder-hint" aria-hidden="true" hidden>RB</kbd>
           </div>
           <span id="controller-status" class="controller-pill" hidden data-i18n="controllerConnected">Mando conectado</span>
+          <button id="window-mode-main" class="window-mode-toggle" type="button" data-window-mode-toggle data-i18n="toggleWindowMode" aria-keyshortcuts="F11">Pantalla completa · F11</button>
           <span id="profile-chip" class="profile-chip" hidden aria-label="Perfil Xbox" data-i18n-aria="profileLabel"></span>
         </header>
         <section class="panel dashboard-home" id="panel-home">
@@ -126,7 +127,7 @@
   <section id="player-screen" class="player-screen" hidden>
     <video id="stream-video" autoplay="" playsinline="" aria-label="Video de Xbox" data-i18n-aria="xboxVideo"></video>
     <div id="stream-overlay" class="stream-overlay" role="status" aria-live="polite"><div class="loading-ring"></div><p id="stream-message" data-i18n="connecting">Conectando…</p></div>
-    <div class="player-toolbar"><span class="player-brand">XJAUS</span><button id="stream-menu-button" type="button" data-i18n="streamMenu">Menú de transmisión</button><button id="stop-stream" type="button" class="btn-danger" data-i18n="exitGame">Salir del juego</button></div>
+    <div class="player-toolbar"><span class="player-brand">XJAUS</span><button id="stream-menu-button" type="button" data-i18n="streamMenu">Menú de transmisión</button><button id="window-mode-stream" class="window-mode-toggle" type="button" data-window-mode-toggle data-i18n="toggleWindowMode" aria-keyshortcuts="F11">Pantalla completa · F11</button><button id="stop-stream" type="button" class="btn-danger" data-i18n="exitGame">Salir del juego</button></div>
   </section>
   <div id="toast" role="alert" aria-live="assertive" hidden></div>
   <div id="xjaus-cursor" aria-hidden="true"></div>

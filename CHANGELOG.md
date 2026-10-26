@@ -4,7 +4,23 @@ All notable changes to XJAUS are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 versions follow [Semantic Versioning](https://semver.org/).
 
-## [1.2.1] - Unreleased
+## [1.2.2] - Unreleased
+
+### Added
+
+- Fullscreen/window switching with F11, dashboard and streaming controls, and an in-game menu action.
+- Window bounds and maximized-state persistence with display-aware restore safeguards.
+
+### Changed
+
+- Automatic fullscreen for a stream is now isolated from manual fullscreen state, so an explicit user window choice survives session start and stop.
+- The player keeps the source video aspect ratio with `object-fit: contain`; it does not claim native ultrawide streaming.
+
+### Validation limits
+
+- Fedora GNOME Wayland at 300% scale was smoke-tested for F11/window switching. A physical 21:9 monitor and authenticated playback were not used for this change.
+
+## [1.2.1] - 2026-10-24
 
 ### Added
 

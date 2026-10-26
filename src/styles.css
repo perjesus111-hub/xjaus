@@ -410,6 +410,10 @@ html.hud-cursor-default, html.hud-cursor-default * { cursor: default !important;
 html.cursor-none, html.cursor-none * { cursor: none !important; }
 .player-brand { color: var(--gold); font-weight: 800; letter-spacing: .16em; }
 .player-toolbar .btn-danger { width: auto; padding: 9px 16px; }
+.window-mode-toggle { width:auto; min-height:36px; padding:8px 12px; border:1px solid var(--gold-muted,#8f7339); border-radius:8px; color:var(--gold-bright,#e8c56a); background:#15130dcc; font:600 .8rem system-ui; white-space:nowrap; }
+.window-mode-toggle:hover, .window-mode-toggle:focus-visible { border-color:var(--gold-bright,#e8c56a); background:#322a18; outline:none; }
+.player-toolbar .window-mode-toggle { margin-left:auto; margin-right:10px; }
+@media (max-width: 900px) { .app-main .topbar .window-mode-toggle { padding:8px; font-size:0; } .app-main .topbar .window-mode-toggle::after { content:'⛶'; font-size:1rem; } }
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 50; max-width: min(90vw, 640px); padding: 14px 20px; background: #211b12; border: 1px solid var(--gold-dim); color: var(--text); border-radius: 10px; box-shadow: 0 10px 30px #000b; }
 #cloud-search, #stream-bitrate { background: var(--bg-input); color: var(--text); border: 1px solid var(--border-gold); border-radius: 8px; padding: 10px; font: inherit; }
 #cloud-search { width: min(100%, 450px); margin: 0 0 18px; }
