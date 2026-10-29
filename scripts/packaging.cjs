@@ -24,5 +24,5 @@ if (require.main === module) {
   run('npm', ['run', 'build']);
   run('npm', ['run', 'electron:build-backend:linux']);
   run(path.join(root, 'node_modules/.bin/electron-builder'), linuxBuilderArgs());
-  run(process.execPath, [path.join(root, 'scripts/linux-verify.cjs'), '--new-appimage-name']);
+  run(process.execPath, [path.join(root, 'scripts/linux-verify.cjs')]);
 }

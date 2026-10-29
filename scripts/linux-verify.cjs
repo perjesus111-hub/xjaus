@@ -28,9 +28,10 @@ for (const entry of ['dist/index.html', 'dist/login.html', 'electron/main.cjs', 
 const artifacts = ['AppImage', 'rpm', 'deb'].map(ext => {
   const { artifactName } = require('./packaging.cjs');
   const newName = artifactName(pkg.version, ext);
-  // The existing npm dist:linux command still uses the legacy AppImage name.
+  // npm run dist:linux produces the new AppImage name; --legacy-appimage-name
+  // verifies installers from the pre-1.2.3 flow that embedded 'linux'.
   const legacyName = `XJAUS-${pkg.version}-linux-x86_64.AppImage`;
-  const name = ext === 'AppImage' && !process.argv.includes('--new-appimage-name') ? legacyName : newName;
+  const name = ext === 'AppImage' && process.argv.includes('--legacy-appimage-name') ? legacyName : newName;
   const file = path.join(output, name);
   assert.ok(fs.statSync(file).size > 1024, name);
   const sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
