@@ -42,6 +42,8 @@ Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an
 
 ### AppImage
 
+For the unreleased 1.2.3 build, the intended filename is `XJAUS-1.2.3-x86_64.AppImage`. On Linux, windowed mode uses the desktop's native title bar; its appearance depends on the desktop theme. AppImageUpdate / `.zsync` support is not currently provided or validated.
+
 ```sh
 chmod +x XJAUS-*.AppImage
 ./XJAUS-*.AppImage

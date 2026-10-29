@@ -1,0 +1,14 @@
+# XJAUS 1.2.3 — draft, not published
+
+## Changes
+
+- Linux windowed mode uses the desktop compositor's native title bar, including on the login screen. Its appearance follows the desktop theme. Wayland controls final placement.
+- The Linux AppImage filename is `XJAUS-1.2.3-x86_64.AppImage`. Existing black-and-gold app styling remains the default.
+
+## Packaging and validation limits
+
+- AppImage, RPM and DEB were built locally; the NSIS EXE was built separately. The MSI build was blocked by the local Wine/Mono environment. These artifacts are not yet approved for release.
+- Linux FUSE compatibility may still be required. No runtime upgrade has been demonstrated. `--appimage-extract-and-run` is an alternative where supported.
+- AppImageUpdate update information and `.zsync` are not implemented or validated. Do not claim differential updating from electron-builder's blockmap.
+- A real drag on GNOME Wayland, authenticated playback, a physical 21:9 display and native Windows are not yet validated. Windows installers are not signed. No installer should be announced until its final payload and signature state have been independently verified.
+- The original full AppImage report must be checked before claiming its entire warning list has been resolved.

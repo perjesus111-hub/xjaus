@@ -26,8 +26,11 @@ assert.equal(metadata.homepage, 'https://github.com/perjesus111-hub/xjaus');
 assert.equal(metadata.repository.url, 'https://github.com/perjesus111-hub/xjaus.git');
 for (const entry of ['dist/index.html', 'dist/login.html', 'electron/main.cjs', 'electron/preload.cjs', 'electron/backend-path.cjs']) assert.ok(asar.extractFile(archive, entry).length, entry);
 const artifacts = ['AppImage', 'rpm', 'deb'].map(ext => {
-  const arch = ext === 'deb' ? 'amd64' : 'x86_64';
-  const name = `XJAUS-${pkg.version}-linux-${arch}.${ext}`;
+  const { artifactName } = require('./packaging.cjs');
+  const newName = artifactName(pkg.version, ext);
+  // The existing npm dist:linux command still uses the legacy AppImage name.
+  const legacyName = `XJAUS-${pkg.version}-linux-x86_64.AppImage`;
+  const name = ext === 'AppImage' && !process.argv.includes('--new-appimage-name') ? legacyName : newName;
   const file = path.join(output, name);
   assert.ok(fs.statSync(file).size > 1024, name);
   const sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');

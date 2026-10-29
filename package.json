@@ -7,13 +7,13 @@
   },
   "main": "electron/main.cjs",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && npm run copy-login",
     "copy-login": "mkdir -p dist && cp public/login.html dist/login.html",
-    "test": "vitest run && node --test electron/verify-security.cjs electron/verify-icons.cjs electron/verify-windows.cjs electron/verify-window-state.cjs",
+    "test": "vitest run && node --test electron/verify-security.cjs electron/verify-icons.cjs electron/verify-windows.cjs electron/verify-window-state.cjs electron/verify-window-drag.cjs scripts/verify-packaging.cjs",
     "electron": "electron . --class=io.github.xjaus.xjaus",
     "electron:build-backend": "cargo build --manifest-path src-tauri/Cargo.toml --bin xjaus_backend",
     "electron:run": "npm run build && npm run electron:build-backend && electron . --class=io.github.xjaus.xjaus",
@@ -23,7 +23,7 @@
     "prebuild:win": "npm run build && npm run electron:build-backend:win",
     "electron:build-backend:win": "node scripts/build-windows.cjs",
     "electron:build-backend:linux": "node scripts/build-linux.cjs",
-    "dist:linux": "npm run build && npm run electron:build-backend:linux && electron-builder --linux AppImage rpm deb --x64 --publish never -c.directories.output=release/linux && node scripts/linux-verify.cjs"
+    "dist:linux": "node scripts/packaging.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

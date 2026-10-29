@@ -129,6 +129,7 @@ test('profile IPC traverses both whitelists and CSP allows gamerpic host', async
   assert.match(readFileSync(require.resolve('../index.html'),'utf8'), /img-src[^;]*https:\/\/images-eds\.xboxlive\.com/);
 });
 require('./verify-fullscreen.cjs');
+require('./verify-window-drag.cjs');
 test('settings IPC traverses both allowlists, rejecting arbitrary filesystem operations', async () => {
   let bridge;const calls=[];
   runInNewContext(readFileSync(require.resolve('./preload.cjs'),'utf8'),{require:()=>({contextBridge:{exposeInMainWorld:(_name,value)=>bridge=value},ipcRenderer:{invoke:(...args)=>{calls.push(args);return Promise.resolve();}}})});

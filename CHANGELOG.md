@@ -4,6 +4,18 @@ All notable changes to XJAUS are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.3] - Unreleased
+
+### Changed
+
+- Linux windowed mode uses the compositor's native title bar, including at sign-in, rather than a hidden title bar. Its appearance follows the desktop theme; Wayland controls final positioning.
+- The Linux AppImage is named `XJAUS-1.2.3-x86_64.AppImage`; RPM, DEB and Windows naming remain unchanged.
+
+### Validation limits
+
+- The AppImage update-information / zsync workflow is not implemented or validated. The black-and-gold interface remains the default.
+- A real drag on GNOME Wayland, authenticated streaming, physical ultrawide displays and native Windows still need validation. Linux packaging completed; the Windows MSI build is blocked by Wine/Mono in this environment. This entry is not a release announcement.
+
 ## [1.2.2] - Unreleased
 
 ### Added
