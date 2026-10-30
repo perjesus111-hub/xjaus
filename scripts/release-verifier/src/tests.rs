@@ -428,3 +428,38 @@ fn rejects_file_substitution_before_consumer() {
     assert!(!called.get());
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn signed_manifest_enforces_per_file_and_aggregate_limits() {
+    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new()).unwrap();
+    let key = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+    let mut records = std::array::from_fn(|i| Record {
+        name: NAMES[i],
+        size: 1,
+        digest: [0; 32],
+    });
+    let check = |records: &[Record; 5]| {
+        let m = encode(COMMIT, records);
+        authenticate(&m, key.sign(&m).as_ref(), key.public_key().as_ref(), COMMIT).map(|_| ())
+    };
+    records[0].size = 512 * 1024 * 1024;
+    records[1].size = 512 * 1024 * 1024 - 3;
+    assert!(check(&records).is_ok());
+    records[1].size += 1;
+    assert_eq!(check(&records), Err("total"));
+    records[0].size += 1;
+    assert_eq!(check(&records), Err("size"));
+}
+
+#[test]
+fn seal_rejects_extra_input_and_oversize_before_reading() {
+    use std::io::{self, Read};
+    struct MustNotRead;
+    impl Read for MustNotRead {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            panic!("oversize input was read")
+        }
+    }
+    assert!(seal(&b"abcd"[..], 3).is_err());
+    assert!(seal(MustNotRead, 512 * 1024 * 1024 + 1).is_err());
+}
