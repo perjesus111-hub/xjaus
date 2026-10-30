@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { i18n } from "./i18n";
 import { provisioningMessage } from "./provisioning-message";
+
+let previousPreference: typeof i18n.preference;
+beforeEach(() => { previousPreference = i18n.preference; i18n.setPreference("es"); });
+afterEach(() => { i18n.setPreference(previousPreference); });
 
 describe("provisioningMessage", () => {
   it("shows the cloud-friendly startup copy with game name", () => {
