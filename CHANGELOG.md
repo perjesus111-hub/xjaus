@@ -14,10 +14,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Validation limits
 
-- The AppImage update-information / zsync workflow is not implemented or validated. The black-and-gold interface remains the default.
-- A real drag on GNOME Wayland, authenticated streaming, physical ultrawide displays and native Windows still need validation. Linux packaging completed; the Windows MSI build is blocked by Wine/Mono in this environment. This entry is not a release announcement.
+- AppImageUpdate / zsync remains disabled for distribution; the separate prototype is experimental and unauthenticated. The black-and-gold interface remains the default.
+- Exact normal-window geometry and maximization restoration, dashboard dragging, physical controller, authenticated streaming, physical ultrawide displays and native Windows remain unverified. Linux and Windows installer builds completed locally; this is not a release announcement.
 
-## [1.2.2] - Unreleased
+## [1.2.2] - 2026-10-26
 
 ### Added
 
@@ -51,9 +51,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Release status
 
-- Local draft only. Do not treat this entry as a published release; the validation
-  report is `docs/validation-1.2.1.md` and the unpublished notes are
-  `docs/release-notes-1.2.1-draft.md`.
+- Published as v1.2.1. The validation report is `docs/validation-1.2.1.md`
+  and the release notes are `docs/release-notes-1.2.1.md`.
 
 ## [1.2.0] - 2026-10-21
 

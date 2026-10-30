@@ -16,10 +16,12 @@ function verifyLauncher(launcher) {
 }
 exports.verifyLauncher = verifyLauncher;
 // Use an external parser; never execute an untrusted AppImage runtime.
-function extractAndVerifyLauncher(artifact, extractor = '7z') {
+function extractAndVerifyLauncher(artifact, extractor = '7z', inheritedFd) {
+  const childStdio = inheritedFd === undefined ? undefined : ['ignore', 'pipe', 'pipe', inheritedFd];
+  if (inheritedFd !== undefined) artifact = '/proc/self/fd/3';
   const maxLauncherSize = 64 * 1024;
   const args = ['-tSquashFS', '-spd', artifact, 'AppRun'];
-  const listing = spawnSync(extractor, ['l', '-slt', '-ba', ...args], {encoding: 'utf8', maxBuffer: maxLauncherSize});
+  const listing = spawnSync(extractor, ['l', '-slt', '-ba', ...args], {encoding: 'utf8', maxBuffer: maxLauncherSize, stdio: childStdio});
   assert.equal(listing.status, 0, `7z AppRun listing failed: ${listing.error || listing.stderr}`);
   const records = listing.stdout.trim().split(/\r?\n\s*\r?\n/).filter(Boolean);
   assert.equal(records.length, 1, 'Expected exactly one AppRun entry');
@@ -34,7 +36,7 @@ function extractAndVerifyLauncher(artifact, extractor = '7z') {
   assert.match(sizes[0], /^[0-9]+$/, 'Invalid AppRun size');
   const size = Number(sizes[0]);
   assert.ok(Number.isSafeInteger(size) && size > 0 && size <= maxLauncherSize, 'AppRun size outside allowed range');
-  const result = spawnSync(extractor, ['x', '-so', ...args], {maxBuffer: maxLauncherSize});
+  const result = spawnSync(extractor, ['x', '-so', ...args], {maxBuffer: maxLauncherSize, stdio: childStdio});
   assert.equal(result.status, 0, `7z AppRun extraction failed: ${result.error || result.stderr}`);
   assert.equal(result.stdout.length, size, 'AppRun extracted size mismatch');
   verifyLauncher(result.stdout);

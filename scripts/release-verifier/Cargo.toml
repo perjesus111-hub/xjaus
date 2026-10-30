@@ -1,0 +1,9 @@
+[package]
+name="xjaus-release-verifier"
+version="0.1.0"
+edition="2024"
+[dependencies]
+ring="=0.17.14"
+sha2="=0.10.9"
+libc="=0.2.184"
+backhand={version="=0.25.5",default-features=false,features=["gzip"]}

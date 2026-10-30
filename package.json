@@ -13,7 +13,7 @@
     "dev": "vite",
     "build": "tsc && vite build && npm run copy-login",
     "copy-login": "mkdir -p dist && cp public/login.html dist/login.html",
-    "test": "vitest run && node --test electron/verify-security.cjs electron/verify-icons.cjs electron/verify-windows.cjs electron/verify-window-state.cjs electron/verify-window-drag.cjs scripts/verify-packaging.cjs scripts/verify-appimage-update-preparation.cjs",
+    "test": "vitest run && node --test electron/verify-security.cjs electron/verify-icons.cjs electron/verify-windows.cjs electron/verify-window-state.cjs electron/verify-window-drag.cjs scripts/verify-packaging.cjs scripts/verify-appimage-update-preparation.cjs scripts/verify-release-gate.cjs",
     "electron": "electron . --class=io.github.xjaus.xjaus",
     "electron:build-backend": "cargo build --manifest-path src-tauri/Cargo.toml --bin xjaus_backend",
     "electron:run": "npm run build && npm run electron:build-backend && electron . --class=io.github.xjaus.xjaus",
