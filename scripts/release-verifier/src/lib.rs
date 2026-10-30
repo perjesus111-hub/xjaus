@@ -363,6 +363,49 @@ mod implementation {
     ) -> R<()> {
         verify_policy(root, m, sig, key, &REFERENCE, hook, consumer)
     }
+    // Test-only fixed consumer: it receives only the sealed descriptors and
+    // authenticated metadata. This is not a sandbox: Rust types do not prevent
+    // a malicious consumer from reopening paths or performing other I/O. Sources
+    // must be quiescent; directory enumeration is not an atomic snapshot. The
+    // kernel, process, dependencies and ephemeral test key are trusted here.
+    // No output is publication approval and production remains disabled.
+    pub(super) fn verify_fixed(
+        root: &File,
+        m: &[u8],
+        sig: &[u8],
+        key: &[u8; 32],
+        reference: &[u8; 32],
+    ) -> R<[Record; 5]> {
+        let records = authenticate(m, sig, key, COMMIT)?;
+        let mut consumed = None;
+        verify_policy(
+            root,
+            m,
+            sig,
+            key,
+            reference,
+            || {},
+            |files| {
+                consumed = Some(fixed_consume(files, &records));
+            },
+        )?;
+        consumed.ok_or("consumer not run")??;
+        Ok(records)
+    }
+
+    pub(super) fn fixed_consume(files: &[File; 5], records: &[Record; 5]) -> R<()> {
+        for (file, record) in files.iter().zip(records) {
+            let seals = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GET_SEALS) };
+            if seals < 0 || seals & SEALS != SEALS || file.metadata()?.len() != record.size {
+                return Err("consumer seals or size".into());
+            }
+            if digest_file(&mut file.try_clone()?)? != record.digest {
+                return Err("consumer digest".into());
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn verify_policy(
         root: &File,
         m: &[u8],

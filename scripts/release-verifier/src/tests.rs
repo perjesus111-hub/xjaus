@@ -157,6 +157,16 @@ fn directory_and_authentication_failures_never_call_consumer() {
             "{e} did not contain {expected}"
         );
         assert!(!called.get());
+        assert!(
+            implementation::verify_fixed(
+                &root,
+                m,
+                sig,
+                key.public_key().as_ref().try_into().unwrap(),
+                &implementation::REFERENCE,
+            )
+            .is_err()
+        );
     };
     let sig = key.sign(&original);
     let wrong = test_key();
@@ -263,6 +273,21 @@ fn real_candidates_end_to_end() {
     let manifest = encode(COMMIT, &records);
     let sig = key.sign(&manifest);
     let root = File::open(&scratch.0).unwrap();
+    // Exercise the fixed consumer against the actual candidate bytes. The
+    // locally signed manifest and reference are fixtures, not release trust.
+    let received = implementation::verify_fixed(
+        &root,
+        &manifest,
+        sig.as_ref(),
+        &public_key,
+        &implementation::REFERENCE,
+    )
+    .unwrap();
+    for (actual, expected) in received.iter().zip(&records) {
+        assert_eq!(actual.name, expected.name);
+        assert_eq!(actual.size, expected.size);
+        assert_eq!(actual.digest, expected.digest);
+    }
     let calls = std::cell::Cell::new(0);
     implementation::verify_policy(
         &root,
@@ -473,4 +498,166 @@ fn seal_rejects_extra_input_and_oversize_before_reading() {
     }
     assert!(seal(&b"abcd"[..], 3).is_err());
     assert!(seal(MustNotRead, 512 * 1024 * 1024 + 1).is_err());
+}
+
+#[test]
+fn fixed_consumer_rejects_bad_signature_without_report() {
+    let root = std::fs::File::open(".").unwrap();
+    let key = test_key();
+    let result = implementation::verify_fixed(
+        &root,
+        b"bad",
+        &[0; 64],
+        key.public_key().as_ref().try_into().unwrap(),
+        &implementation::REFERENCE,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn fixed_consumer_rejects_each_bad_descriptor() {
+    use sha2::{Digest, Sha256};
+    use std::{
+        io::Write,
+        os::{
+            fd::{AsRawFd, FromRawFd},
+            unix::fs::FileExt,
+        },
+    };
+    let records: [Record; 5] = std::array::from_fn(|i| Record {
+        name: NAMES[i],
+        size: 3,
+        digest: Sha256::digest(b"abc").into(),
+    });
+    let make = || std::array::from_fn(|_| seal(&b"abc"[..], 3).unwrap());
+    let files: [std::fs::File; 5] = make();
+    implementation::fixed_consume(&files, &records).unwrap();
+    for i in 0..5 {
+        let mut bad = records.clone();
+        bad[i].size += 1;
+        assert!(
+            implementation::fixed_consume(&files, &bad)
+                .unwrap_err()
+                .to_string()
+                .contains("consumer seals or size")
+        );
+        let mut bad = records.clone();
+        bad[i].digest[0] ^= 1;
+        assert!(
+            implementation::fixed_consume(&files, &bad)
+                .unwrap_err()
+                .to_string()
+                .contains("consumer digest")
+        );
+        let mut unsealed: [std::fs::File; 5] = make();
+        let fd = unsafe {
+            libc::memfd_create(
+                c"unsealed-fixture".as_ptr(),
+                libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING,
+            )
+        };
+        assert!(fd >= 0);
+        let mut f = unsafe { std::fs::File::from_raw_fd(fd) };
+        f.write_all(b"abc").unwrap();
+        unsealed[i] = f;
+        assert_eq!(
+            unsafe { libc::fcntl(unsealed[i].as_raw_fd(), libc::F_GET_SEALS) },
+            0
+        );
+        assert!(
+            implementation::fixed_consume(&unsealed, &records)
+                .unwrap_err()
+                .to_string()
+                .contains("consumer seals or size")
+        );
+        for f in &unsealed {
+            let mut b = [0; 3];
+            f.read_exact_at(&mut b, 0).unwrap();
+            assert_eq!(&b, b"abc");
+        }
+    }
+}
+
+#[test]
+fn fixed_verifier_consumes_five_small_signed_fixtures() {
+    use sha2::{Digest, Sha256};
+    use std::{
+        fs,
+        io::{Cursor, Write},
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    struct Scratch(std::path::PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let dir = Scratch(
+        std::path::PathBuf::from(std::env::var_os("TMPDIR").unwrap()).join(format!(
+            "fixed-consumer-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )),
+    );
+    fs::create_dir(&dir.0).unwrap();
+    fs::create_dir(dir.0.join("linux")).unwrap();
+    fs::create_dir(dir.0.join("win")).unwrap();
+    let apprun = b"synthetic test AppRun, not release trust";
+    let mut squash = backhand::FilesystemWriter::default();
+    squash.set_compressor(
+        backhand::FilesystemCompressor::new(backhand::compression::Compressor::Gzip, None).unwrap(),
+    );
+    squash
+        .push_file(
+            Cursor::new(apprun.to_vec()),
+            "AppRun",
+            backhand::NodeHeader::default(),
+        )
+        .unwrap();
+    let mut filesystem = Cursor::new(Vec::new());
+    squash.write(&mut filesystem).unwrap();
+    let mut image = vec![0u8; 128];
+    image[..6].copy_from_slice(b"\x7fELF\x02\x01");
+    image[40..48].copy_from_slice(&64u64.to_le_bytes());
+    image[58..60].copy_from_slice(&64u16.to_le_bytes());
+    image[60..62].copy_from_slice(&1u16.to_le_bytes());
+    image.write_all(&filesystem.into_inner()).unwrap();
+    let contents: [Vec<u8>; 5] = std::array::from_fn(|i| {
+        if i == 0 {
+            image.clone()
+        } else {
+            format!("synthetic artifact {i}").into_bytes()
+        }
+    });
+    let records: [Record; 5] = std::array::from_fn(|i| Record {
+        name: NAMES[i],
+        size: contents[i].len() as u64,
+        digest: Sha256::digest(&contents[i]).into(),
+    });
+    for i in 0..5 {
+        fs::write(dir.0.join(NAMES[i]), &contents[i]).unwrap();
+    }
+    let root = fs::File::open(&dir.0).unwrap();
+    let key = test_key();
+    let manifest = encode(COMMIT, &records);
+    let signature = key.sign(&manifest);
+    let public = key.public_key().as_ref().try_into().unwrap();
+    let reference = Sha256::digest(apprun).into();
+    let result =
+        implementation::verify_fixed(&root, &manifest, signature.as_ref(), public, &reference)
+            .unwrap();
+    for (actual, expected) in result.iter().zip(&records) {
+        assert_eq!(
+            (actual.name, actual.size, actual.digest),
+            (expected.name, expected.size, expected.digest)
+        );
+    }
+    let mut bad = signature.as_ref().to_vec();
+    bad[0] ^= 1;
+    assert!(implementation::verify_fixed(&root, &manifest, &bad, public, &reference).is_err());
+    for i in 0..5 {
+        assert_eq!(fs::read(dir.0.join(NAMES[i])).unwrap(), contents[i]);
+    }
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
 }
