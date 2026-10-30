@@ -10,6 +10,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 - Linux windowed mode uses the compositor's native title bar, including at sign-in, rather than a hidden title bar. Its appearance follows the desktop theme; Wayland controls final positioning.
 - The Linux AppImage is named `XJAUS-1.2.3-x86_64.AppImage`; RPM, DEB and Windows naming remain unchanged.
+- The supported AppImage build path refuses an unavailable user-namespace probe and rejects `--no-sandbox` rather than disabling Electron's sandbox silently. The conservative probe may reject systems that could use a different sandbox mechanism.
 
 ### Validation limits
 

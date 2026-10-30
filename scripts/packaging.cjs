@@ -1,5 +1,6 @@
 'use strict';
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
 function artifactName(version, ext) {
@@ -16,6 +17,7 @@ exports.linuxBuilderArgs = linuxBuilderArgs;
 
 if (require.main === module) {
   const root = path.resolve(__dirname, '..');
+  fs.rmSync(path.join(root, 'release/linux/SHA256SUMS'), {force:true});
   function run(command, args) {
     const result = spawnSync(command, args, { cwd: root, stdio: 'inherit' });
     if (result.error) throw result.error;
@@ -23,6 +25,7 @@ if (require.main === module) {
   }
   run('npm', ['run', 'build']);
   run('npm', ['run', 'electron:build-backend:linux']);
-  run(path.join(root, 'node_modules/.bin/electron-builder'), linuxBuilderArgs());
+  run(process.execPath, ['-r', path.join(root, 'scripts/secure-appimage-preload.cjs'),
+    path.join(root, 'node_modules/electron-builder/cli.js'), ...linuxBuilderArgs()]);
   run(process.execPath, [path.join(root, 'scripts/linux-verify.cjs')]);
 }

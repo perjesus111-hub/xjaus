@@ -49,7 +49,7 @@ chmod +x XJAUS-*.AppImage
 ./XJAUS-*.AppImage
 ```
 
-AppImage support may require your distribution's FUSE compatibility package. If FUSE is unavailable, try the runtime's `--appimage-extract-and-run` option. Do not disable Electron's sandbox as an installation workaround.
+AppImage support may require your distribution's FUSE compatibility package. If FUSE is unavailable, try the runtime's `--appimage-extract-and-run` option. XJAUS refuses to start when its user-namespace sandbox probe fails or `unshare` is missing, and rejects `--no-sandbox`; check your distribution's sandbox and user-namespace settings instead. This conservative check can also reject systems where another sandbox mechanism might otherwise work. On Linux, verifying the AppImage build requires `7z` with SquashFS support. Use the documented `npm run dist:linux` build path: invoking electron-builder directly bypasses XJAUS's launcher hardening and verification.
 
 ### Fedora / RPM-based distributions
 
