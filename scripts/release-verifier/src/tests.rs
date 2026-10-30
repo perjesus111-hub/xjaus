@@ -661,3 +661,252 @@ fn fixed_verifier_consumes_five_small_signed_fixtures() {
     }
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
 }
+
+#[test]
+fn opaque_policy_requires_independent_signed_approval() {
+    let manifest_key = test_key();
+    let approval_key = test_key();
+    let record = Record {
+        name: NAMES[0],
+        size: 3,
+        digest: [7; 32],
+    };
+    let approval = opaque::approval_bytes(record.size, &record.digest);
+    assert!(
+        opaque::authenticate_approval(
+            &approval,
+            approval_key.sign(&approval).as_ref(),
+            approval_key.public_key().as_ref(),
+            manifest_key.public_key().as_ref(),
+            record.size,
+            &record.digest
+        )
+        .is_ok()
+    );
+    assert!(
+        opaque::authenticate_approval(
+            &approval,
+            manifest_key.sign(&approval).as_ref(),
+            manifest_key.public_key().as_ref(),
+            manifest_key.public_key().as_ref(),
+            record.size,
+            &record.digest
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn opaque_verifier_accepts_only_independently_approved_sealed_opaque_bytes() {
+    use sha2::{Digest, Sha256};
+    use std::fs;
+    let dir = std::path::PathBuf::from(std::env::var_os("TMPDIR").unwrap())
+        .join(format!("opaque-{}", std::process::id()));
+    fs::create_dir(&dir).unwrap();
+    fs::create_dir(dir.join("linux")).unwrap();
+    fs::create_dir(dir.join("win")).unwrap();
+    for name in NAMES {
+        fs::write(dir.join(name), b"abc").unwrap();
+    }
+    let records = std::array::from_fn(|i| opaque::Record {
+        name: NAMES[i],
+        size: 3,
+        digest: Sha256::digest(b"abc").into(),
+    });
+    let manifest = opaque::encode(&records);
+    let mk = test_key();
+    let ak = test_key();
+    let approval = opaque::approval_bytes(3, &records[0].digest);
+    let root = fs::File::open(&dir).unwrap();
+    assert!(
+        opaque::verify(
+            &root,
+            &manifest,
+            mk.sign(&manifest).as_ref(),
+            mk.public_key().as_ref(),
+            &approval,
+            ak.sign(&approval).as_ref(),
+            ak.public_key().as_ref()
+        )
+        .is_ok()
+    );
+    let ms = mk.sign(&manifest);
+    let aps = ak.sign(&approval);
+    let check = |m: &[u8], sig: &[u8], a: &[u8], asig: &[u8], akp: &[u8]| {
+        opaque::verify(&root, m, sig, mk.public_key().as_ref(), a, asig, akp).is_err()
+    };
+    assert!(check(
+        &manifest,
+        &[0; 64],
+        &approval,
+        aps.as_ref(),
+        ak.public_key().as_ref()
+    ));
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        &approval,
+        &[0; 64],
+        ak.public_key().as_ref()
+    ));
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        b"",
+        aps.as_ref(),
+        ak.public_key().as_ref()
+    ));
+    let mut malformed = approval.clone();
+    malformed[0] ^= 1;
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        &malformed,
+        ak.sign(&malformed).as_ref(),
+        ak.public_key().as_ref()
+    ));
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        &approval,
+        aps.as_ref(),
+        mk.public_key().as_ref()
+    ));
+    let mut extra_manifest = manifest.clone();
+    extra_manifest.push(0);
+    assert!(check(
+        &extra_manifest,
+        mk.sign(&extra_manifest).as_ref(),
+        &approval,
+        aps.as_ref(),
+        ak.public_key().as_ref()
+    ));
+    fs::write(dir.join("linux/extra"), b"x").unwrap();
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        &approval,
+        aps.as_ref(),
+        ak.public_key().as_ref()
+    ));
+    fs::remove_file(dir.join("linux/extra")).unwrap();
+    fs::remove_file(dir.join(NAMES[1])).unwrap();
+    std::os::unix::fs::symlink("/dev/null", dir.join(NAMES[1])).unwrap();
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        &approval,
+        aps.as_ref(),
+        ak.public_key().as_ref()
+    ));
+    fs::remove_file(dir.join(NAMES[1])).unwrap();
+    fs::write(dir.join(NAMES[1]), b"abcd").unwrap();
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        &approval,
+        aps.as_ref(),
+        ak.public_key().as_ref()
+    ));
+    fs::write(dir.join(NAMES[1]), b"xyz").unwrap();
+    assert!(check(
+        &manifest,
+        ms.as_ref(),
+        &approval,
+        aps.as_ref(),
+        ak.public_key().as_ref()
+    ));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn production_rejects_missing_opaque_trust_policy() {
+    let root = std::fs::File::open(".").unwrap();
+    assert_eq!(
+        crate::verify_release(&root, b"", b"")
+            .unwrap_err()
+            .to_string(),
+        "no approved opaque trust policy"
+    );
+}
+
+#[test]
+fn opaque_boundary_drops_owned_staging_handles_and_consumer_does_not_reopen() {
+    // Source-level guard: this does not prove the absence of all possible I/O.
+    let source = include_str!("opaque.rs");
+    let verify = source.split("pub(super) fn verify(").nth(1).unwrap();
+    let before_consumer = verify
+        .split("fixed_consume(&files, &records)")
+        .next()
+        .unwrap();
+    for handle in ["inputs", "linux", "win"] {
+        assert!(
+            before_consumer.contains(&format!("drop({handle});")),
+            "{handle} must be dropped before consumption"
+        );
+    }
+    let consumer = source
+        .split("pub(super) fn fixed_consume(")
+        .nth(1)
+        .unwrap()
+        .split("// The key and approval inputs")
+        .next()
+        .unwrap();
+    assert!(!consumer.contains("open_component("));
+    assert!(!consumer.contains("File::open("));
+}
+
+#[test]
+#[ignore = "requires local release candidates and scratch capacity"]
+fn opaque_real_candidate_copies_with_ephemeral_keys() {
+    use sha2::{Digest, Sha256};
+    use std::{fs, io::Read};
+    let dir = std::path::PathBuf::from(std::env::var_os("TMPDIR").unwrap())
+        .join(format!("opaque-real-{}", std::process::id()));
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fs::create_dir(&dir).unwrap();
+    let _cleanup = Cleanup(dir.clone());
+    fs::create_dir(dir.join("linux")).unwrap();
+    fs::create_dir(dir.join("win")).unwrap();
+    let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../release");
+    let mut records = Vec::new();
+    for name in NAMES {
+        fs::copy(source.join(name), dir.join(name)).unwrap();
+        let mut file = fs::File::open(dir.join(name)).unwrap();
+        let size = file.metadata().unwrap().len();
+        let mut hash = Sha256::new();
+        let mut buf = [0u8; 65536];
+        loop {
+            let n = file.read(&mut buf).unwrap();
+            if n == 0 {
+                break;
+            }
+            hash.update(&buf[..n]);
+        }
+        records.push(opaque::Record {
+            name,
+            size,
+            digest: hash.finalize().into(),
+        });
+    }
+    let records: [opaque::Record; 5] = records.try_into().ok().unwrap();
+    let manifest = opaque::encode(&records);
+    let mk = test_key();
+    let ak = test_key();
+    let approval = opaque::approval_bytes(records[0].size, &records[0].digest);
+    opaque::verify(
+        &fs::File::open(&dir).unwrap(),
+        &manifest,
+        mk.sign(&manifest).as_ref(),
+        mk.public_key().as_ref(),
+        &approval,
+        ak.sign(&approval).as_ref(),
+        ak.public_key().as_ref(),
+    )
+    .unwrap();
+}

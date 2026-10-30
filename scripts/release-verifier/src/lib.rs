@@ -1,21 +1,22 @@
-//! Non-publishing research prototype. Production has no approved trust anchor
-//! or independently reviewed AppRun reference and always rejects.
-//!
-//! The production entry point is fail-closed until separately approved trust
-//! policy is configured in source. The test key and AppRun digest are NOT trusted release
-//! credentials. Before enabling any integration: obtain an operator-verified
-//! Ed25519 public key out of band; independently reproduce and review AppRun from authenticated builder source
-//! and patch as described in scripts/APP-RUN-REFERENCE.md; record provenance,
-//! digest and reviewer approval; explicitly approve the version, full commit and
-//! exact paths; review limits, parser robustness and Linux memfd resource usage;
-//! and perform a separate security review. Never derive the policy reference from
-//! the candidate being checked. This code has no publisher and does not change
-//! the existing disabled release gate.
-//!
-//! Test manifest: domain `XJAUS-RELEASE-MANIFEST-v1\0`, five ASCII version
-//! bytes, 40 lowercase ASCII commit bytes, then five ordered records, each a
-//! big-endian u16 path length, exact UTF-8 path, big-endian u64 size and 32 raw
-//! SHA-256 bytes. Detached Ed25519 signs the complete byte sequence.
+mod opaque;
+// Non-publishing research prototype. Production has no approved trust anchor
+// or independently reviewed AppRun reference and always rejects.
+//
+// The production entry point is fail-closed until separately approved trust
+// policy is configured in source. The test key and AppRun digest are NOT trusted release
+// credentials. Before enabling any integration: obtain an operator-verified
+// Ed25519 public key out of band; independently reproduce and review AppRun from authenticated builder source
+// and patch as described in scripts/APP-RUN-REFERENCE.md; record provenance,
+// digest and reviewer approval; explicitly approve the version, full commit and
+// exact paths; review limits, parser robustness and Linux memfd resource usage;
+// and perform a separate security review. Never derive the policy reference from
+// the candidate being checked. This code has no publisher and does not change
+// the existing disabled release gate.
+//
+// Test manifest: domain `XJAUS-RELEASE-MANIFEST-v1\0`, five ASCII version
+// bytes, 40 lowercase ASCII commit bytes, then five ordered records, each a
+// big-endian u16 path length, exact UTF-8 path, big-endian u64 size and 32 raw
+// SHA-256 bytes. Detached Ed25519 signs the complete byte sequence.
 pub fn production_verify() -> Result<(), &'static str> {
     Err("no approved trust anchor or AppRun reference")
 }
@@ -24,12 +25,26 @@ pub fn production_verify() -> Result<(), &'static str> {
 /// Enabling verification requires approved trust policy and a separately enforced
 /// parser sandbox; a Rust callback cannot restrict a caller's filesystem access.
 pub fn verify_release(
-    _root: &std::fs::File,
-    _manifest: &[u8],
-    _signature: &[u8],
+    root: &std::fs::File,
+    manifest: &[u8],
+    signature: &[u8],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    Err("no approved production trust anchor or isolated parser".into())
+    let (manifest_key, approval_key, approval, approval_signature) =
+        PRODUCTION_OPAQUE_POLICY.ok_or("no approved opaque trust policy")?;
+    opaque::verify(
+        root,
+        manifest,
+        signature,
+        manifest_key,
+        approval,
+        approval_signature,
+        approval_key,
+    )
 }
+
+// Deliberately absent: values must be independently provisioned and reviewed.
+type OpaquePolicy = (&'static [u8], &'static [u8], &'static [u8], &'static [u8]);
+const PRODUCTION_OPAQUE_POLICY: Option<OpaquePolicy> = None;
 
 // The experimental parser has no enforced CPU, wall-time or memory boundary.
 // Keep it out of production builds until an isolated worker is implemented.
