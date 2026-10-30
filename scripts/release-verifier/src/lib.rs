@@ -20,26 +20,20 @@ pub fn production_verify() -> Result<(), &'static str> {
     Err("no approved trust anchor or AppRun reference")
 }
 
-/// Authenticate and validate five release candidates before delivering sealed snapshots.
-///
-/// This function currently always rejects: neither a production public key nor an
-/// independently approved AppRun digest is configured. It never publishes files.
-/// The caller must supply a trusted, quiescent directory descriptor and ensure
-/// sufficient private memory; directory rechecks cannot eliminate concurrent races.
-/// Consumers must read only the supplied sealed files, not reopen source paths.
+/// Disabled non-publishing entry point. No callback or verified output is exposed.
+/// Enabling verification requires approved trust policy and a separately enforced
+/// parser sandbox; a Rust callback cannot restrict a caller's filesystem access.
 pub fn verify_release(
-    root: &std::fs::File,
-    manifest: &[u8],
-    signature: &[u8],
-    consumer: impl FnOnce(&[std::fs::File; 5]),
+    _root: &std::fs::File,
+    _manifest: &[u8],
+    _signature: &[u8],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    const PRODUCTION_KEY: Option<[u8; 32]> = None;
-    const PRODUCTION_APPRUN: Option<[u8; 32]> = None;
-    let key = PRODUCTION_KEY.ok_or("no approved production trust anchor")?;
-    let reference = PRODUCTION_APPRUN.ok_or("no approved AppRun reference")?;
-    implementation::verify_policy(root, manifest, signature, &key, &reference, || {}, consumer)
+    Err("no approved production trust anchor or isolated parser".into())
 }
 
+// The experimental parser has no enforced CPU, wall-time or memory boundary.
+// Keep it out of production builds until an isolated worker is implemented.
+#[cfg(test)]
 mod implementation {
     use ring::signature;
     const DOMAIN: &[u8] = b"XJAUS-RELEASE-MANIFEST-v1\0";
@@ -238,16 +232,7 @@ mod implementation {
         Ok(h.finalize().into())
     }
 
-    // Test-only policy: this seed and digest are public experimental fixtures, not release trust.
-    #[cfg(test)]
-    fn test_key() -> Vec<u8> {
-        use ring::signature::KeyPair;
-        signature::Ed25519KeyPair::from_seed_unchecked(&[42; 32])
-            .unwrap()
-            .public_key()
-            .as_ref()
-            .to_vec()
-    }
+    // Test-only digest fixture, not release trust.
     #[cfg(test)]
     pub(super) const REFERENCE: [u8; 32] = [
         0x7b, 0xc1, 0xa3, 0xc5, 0x81, 0x7e, 0x3c, 0x60, 0xed, 0x28, 0x5c, 0xa3, 0x5a, 0x21, 0x76,
@@ -358,26 +343,25 @@ mod implementation {
         Ok(())
     }
     #[cfg(test)]
-    pub fn verify(root: &File, m: &[u8], sig: &[u8], consumer: impl FnOnce(&[File; 5])) -> R<()> {
-        verify_with_hook(root, m, sig, || {}, consumer)
+    pub fn verify(
+        root: &File,
+        m: &[u8],
+        sig: &[u8],
+        key: &[u8; 32],
+        consumer: impl FnOnce(&[File; 5]),
+    ) -> R<()> {
+        verify_with_hook(root, m, sig, key, || {}, consumer)
     }
     #[cfg(test)]
     pub fn verify_with_hook(
         root: &File,
         m: &[u8],
         sig: &[u8],
+        key: &[u8; 32],
         hook: impl FnOnce(),
         consumer: impl FnOnce(&[File; 5]),
     ) -> R<()> {
-        verify_policy(
-            root,
-            m,
-            sig,
-            &test_key().try_into().unwrap(),
-            &REFERENCE,
-            hook,
-            consumer,
-        )
+        verify_policy(root, m, sig, key, &REFERENCE, hook, consumer)
     }
     pub(super) fn verify_policy(
         root: &File,

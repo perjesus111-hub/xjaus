@@ -3,11 +3,14 @@ use super::*;
 fn production_fails_closed() {
     assert!(crate::production_verify().is_err());
     let root = std::fs::File::open(".").unwrap();
-    let called = std::cell::Cell::new(false);
-    assert!(crate::verify_release(&root, b"", b"", |_| called.set(true)).is_err());
-    assert!(!called.get());
+    assert!(crate::verify_release(&root, b"", b"").is_err());
 }
 use ring::signature::{Ed25519KeyPair, KeyPair};
+
+fn test_key() -> Ed25519KeyPair {
+    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new()).unwrap();
+    Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap()
+}
 #[test]
 fn temporary_key_reaches_the_real_verification_engine() {
     let rng = ring::rand::SystemRandom::new();
@@ -36,7 +39,7 @@ fn temporary_key_reaches_the_real_verification_engine() {
 }
 #[test]
 fn canonical_authentication_binds_all_fields() {
-    let key = Ed25519KeyPair::from_seed_unchecked(&[42; 32]).unwrap();
+    let key = test_key();
     let records = std::array::from_fn(|i| Record {
         name: NAMES[i],
         size: 10 + i as u64,
@@ -70,12 +73,12 @@ fn canonical_authentication_binds_all_fields() {
         )
         .is_err()
     );
-    let wrong = Ed25519KeyPair::from_seed_unchecked(&[43; 32]).unwrap();
+    let wrong = test_key();
     assert!(authenticate(&m, sig.as_ref(), wrong.public_key().as_ref(), COMMIT).is_err());
 }
 #[test]
 fn rejects_signed_noncanonical_records() {
-    let key = Ed25519KeyPair::from_seed_unchecked(&[42; 32]).unwrap();
+    let key = test_key();
     let records = std::array::from_fn(|i| Record {
         name: NAMES[i],
         size: 16,
@@ -100,7 +103,7 @@ fn rejects_signed_noncanonical_records() {
 }
 #[test]
 fn rejects_signed_wrong_commit_even_when_caller_supplies_it() {
-    let key = Ed25519KeyPair::from_seed_unchecked(&[42; 32]).unwrap();
+    let key = test_key();
     let records = std::array::from_fn(|i| Record {
         name: NAMES[i],
         size: 1,
@@ -137,11 +140,18 @@ fn directory_and_authentication_failures_never_call_consumer() {
         fs::write(dir.join(n), b"abc").unwrap();
     }
     let root = File::open(&dir).unwrap();
-    let key = Ed25519KeyPair::from_seed_unchecked(&[42; 32]).unwrap();
+    let key = test_key();
     let original = encode(COMMIT, &records);
     let check = |m: &[u8], sig: &[u8], expected: &str| {
         let called = std::cell::Cell::new(false);
-        let e = verify(&root, m, sig, |_| called.set(true)).unwrap_err();
+        let e = verify(
+            &root,
+            m,
+            sig,
+            key.public_key().as_ref().try_into().unwrap(),
+            |_| called.set(true),
+        )
+        .unwrap_err();
         assert!(
             e.to_string().contains(expected),
             "{e} did not contain {expected}"
@@ -149,7 +159,7 @@ fn directory_and_authentication_failures_never_call_consumer() {
         assert!(!called.get());
     };
     let sig = key.sign(&original);
-    let wrong = Ed25519KeyPair::from_seed_unchecked(&[43; 32]).unwrap();
+    let wrong = test_key();
     check(&original, wrong.sign(&original).as_ref(), "signature");
     let mut m = original.clone();
     m[27] ^= 1;
@@ -366,13 +376,14 @@ fn rejects_directory_substitution_before_consumer() {
         fs::write(dir.join(n), b"abc").unwrap();
     }
     let root = File::open(&dir).unwrap();
-    let key = Ed25519KeyPair::from_seed_unchecked(&[42; 32]).unwrap();
+    let key = test_key();
     let m = encode(COMMIT, &records);
     let called = std::cell::Cell::new(false);
     let result = verify_with_hook(
         &root,
         &m,
         key.sign(&m).as_ref(),
+        key.public_key().as_ref().try_into().unwrap(),
         || {
             fs::rename(dir.join("linux"), dir.with_extension("old-linux")).unwrap();
             fs::create_dir(dir.join("linux")).unwrap();
@@ -408,13 +419,14 @@ fn rejects_file_substitution_before_consumer() {
         fs::write(dir.join(n), b"abc").unwrap();
     }
     let root = File::open(&dir).unwrap();
-    let key = Ed25519KeyPair::from_seed_unchecked(&[42; 32]).unwrap();
+    let key = test_key();
     let m = encode(COMMIT, &records);
     let called = std::cell::Cell::new(false);
     let result = verify_with_hook(
         &root,
         &m,
         key.sign(&m).as_ref(),
+        key.public_key().as_ref().try_into().unwrap(),
         || {
             let path = dir.join(NAMES[1]);
             fs::rename(&path, dir.with_extension("old-file")).unwrap();
@@ -431,8 +443,7 @@ fn rejects_file_substitution_before_consumer() {
 
 #[test]
 fn signed_manifest_enforces_per_file_and_aggregate_limits() {
-    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new()).unwrap();
-    let key = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+    let key = test_key();
     let mut records = std::array::from_fn(|i| Record {
         name: NAMES[i],
         size: 1,
