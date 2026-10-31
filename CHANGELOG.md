@@ -4,7 +4,20 @@ All notable changes to XJAUS are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 versions follow [Semantic Versioning](https://semver.org/).
 
-## [1.2.2] - Unreleased
+## [1.2.3] - Unreleased
+
+### Changed
+
+- Linux windowed mode uses the compositor's native title bar, including at sign-in, rather than a hidden title bar. Its appearance follows the desktop theme; Wayland controls final positioning.
+- The Linux AppImage is named `XJAUS-1.2.3-x86_64.AppImage`; RPM, DEB and Windows naming remain unchanged.
+- The supported AppImage build path refuses an unavailable user-namespace probe and rejects `--no-sandbox` rather than disabling Electron's sandbox silently. The conservative probe may reject systems that could use a different sandbox mechanism.
+
+### Validation limits
+
+- AppImageUpdate / zsync remains disabled for distribution; the separate prototype is experimental and unauthenticated. The black-and-gold interface remains the default.
+- Exact normal-window geometry and maximization restoration, dashboard dragging, physical controller, authenticated streaming, physical ultrawide displays and native Windows remain unverified. Linux and Windows installer builds completed locally; this is not a release announcement.
+
+## [1.2.2] - 2026-10-26
 
 ### Added
 
@@ -38,9 +51,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Release status
 
-- Local draft only. Do not treat this entry as a published release; the validation
-  report is `docs/validation-1.2.1.md` and the unpublished notes are
-  `docs/release-notes-1.2.1-draft.md`.
+- Published as v1.2.1. The validation report is `docs/validation-1.2.1.md`
+  and the release notes are `docs/release-notes-1.2.1.md`.
 
 ## [1.2.0] - 2026-10-21
 

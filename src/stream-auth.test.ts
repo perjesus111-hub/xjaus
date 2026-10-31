@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "./i18n";
 import { provisionWithFreshAuth, microsoftSessionExpired, appendMicrosoftReauth } from "./stream-auth";
+
+let previousPreference: typeof i18n.preference;
+beforeEach(() => { previousPreference = i18n.preference; i18n.setPreference("es"); });
+afterEach(() => { i18n.setPreference(previousPreference); });
 
 describe("expired MSA transfer token recovery", () => {
   const expired = 'MsaVeto UserNeedsToSignInAgainWithMSA Details Expired';

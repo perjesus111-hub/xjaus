@@ -29,7 +29,7 @@ test('Linux launchers and packaging share identity and official icon', () => {
   assert.ok(pkg.build.linux.executableArgs.includes(`--class=${id}`));
   for (const file of [`resources/linux/${id}.desktop`, `assets/${id}.desktop`]) {
     const desktop = read(file);
-    assert.ok(desktop.includes(`StartupWMClass=${id}\n`));
+    assert.ok(desktop.split(/\r?\n/).includes(`StartupWMClass=${id}`));
     assert.ok(desktop.includes(`--class=${id}`));
   }
   assert.deepEqual(fs.readFileSync(path.join(root, 'assets/icon.png')), fs.readFileSync(path.join(root, 'resources/icons/512x512.png')));

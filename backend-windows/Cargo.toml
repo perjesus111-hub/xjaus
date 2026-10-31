@@ -1,6 +1,6 @@
 [package]
 name = "xjaus-backend-windows"
-version = "1.2.2"
+version = "1.2.3"
 description = "Windows cross-build of the XJAUS streaming sidecar used as the Electron backend"
 license = "GPL-3.0-only"
 authors = ["XJAUS contributors"]

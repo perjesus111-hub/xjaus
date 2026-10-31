@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "./i18n";
 import {
   createXboxDataChannels,
   assertWebRtcAvailable,
@@ -12,6 +13,10 @@ import {
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn(async (_command:string) => undefined as unknown) }));
 vi.mock("./backend", () => ({ invokeBackend: invoke }));
+
+let previousPreference: typeof i18n.preference;
+beforeEach(() => { previousPreference = i18n.preference; i18n.setPreference("es"); });
+afterEach(() => { i18n.setPreference(previousPreference); });
 
 describe("ICE signaling order", () => {
   it("sends all gathered candidates in one Xbox ICE exchange after SDP answer", async () => {

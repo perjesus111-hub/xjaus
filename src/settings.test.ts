@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import { i18n } from "./i18n";
 import { createSettingsStore, engineSettings, validateSettings, DEFAULT_SETTINGS, SETTINGS_KEY } from './settings';
+
+let previousPreference: typeof i18n.preference;
+beforeEach(() => { previousPreference = i18n.preference; i18n.setPreference("es"); });
+afterEach(() => { i18n.setPreference(previousPreference); });
 
 describe('persistent stream settings', () => {
   it('migrates only a validated legacy settings object', async () => {

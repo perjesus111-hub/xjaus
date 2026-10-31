@@ -171,8 +171,10 @@ app.whenReady().then(() => {
   window = new BrowserWindow({
     ...restoredBounds, minWidth: 860, minHeight: 600, title: 'XJAUS',
     backgroundColor: '#090a0b', autoHideMenuBar: true, icon: iconPath(app),
-    titleBarStyle: 'hidden',
-    ...(process.platform !== 'darwin' ? { titleBarOverlay: { color: '#090a0b', symbolColor: '#f4f2ec', height: 40 } } : {}),
+    // Linux uses the compositor's native title bar, including on the login screen.
+    // Wayland does not support moving a window via programmatic positioning.
+    ...(process.platform === 'linux' ? {} : { titleBarStyle: 'hidden' }),
+    ...(process.platform !== 'linux' && process.platform !== 'darwin' ? { titleBarOverlay: { color: '#090a0b', symbolColor: '#f4f2ec', height: 40 } } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, sandbox: true, nodeIntegration: false,
