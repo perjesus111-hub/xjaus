@@ -2,6 +2,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const frontend = path.resolve('/app/electron', '../dist/index.html');
+const frontendUrl = pathToFileURL(frontend).href;
 const { trustedFrame, externalLoginUrl, allowedCommand, allowedClipboardText } = require('./security.cjs');
 const { systemLocaleFromEnvironment } = require('./locale.cjs');
 
@@ -13,9 +17,9 @@ test('system locale mapping preserves the configured regional preference and pre
 });
 
 test('IPC rejects subframes, remote pages and arbitrary commands', () => {
-  assert.equal(trustedFrame('file:///app/dist/index.html', 'file:///app/dist/index.html', '/app/dist/index.html'), true);
-  assert.equal(trustedFrame('https://evil.invalid/', 'file:///app/dist/index.html', '/app/dist/index.html'), false);
-  assert.equal(trustedFrame('file:///app/dist/login.html', 'file:///app/dist/index.html', '/app/dist/index.html'), false);
+  assert.equal(trustedFrame(frontendUrl, frontendUrl, frontend), true);
+  assert.equal(trustedFrame('https://evil.invalid/', frontendUrl, frontend), false);
+  assert.equal(trustedFrame(pathToFileURL(path.join(path.dirname(frontend), 'login.html')).href, frontendUrl, frontend), false);
   assert.equal(allowedCommand('auth_status'), true);
   assert.equal(allowedCommand('cancel_login'), true);
   assert.equal(allowedCommand('get_token'), false);
@@ -36,7 +40,7 @@ test('external link admits only exact donation/repository URLs in addition to de
 });
 test('support preload dispatch reaches only authorized external shell, never app navigation', async () => {
   const handlers=new Map(), opened=[], navigations=[];
-  const url='file:///app/dist/index.html';
+  const url=frontendUrl;
   const wc={getURL:()=>url,setWindowOpenHandler:()=>{},on:()=>{}};
   const win={webContents:wc,loadFile:value=>navigations.push(value)};
   const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}}};
@@ -60,7 +64,7 @@ test('external link is restricted to device sign-in', () => {
 });
 test('verification and clipboard bridges validate at preload and Electron main', async () => {
   const handlers = new Map(); const opened = []; const copied = []; const logs = []; let stderrData;
-  const url = 'file:///app/dist/index.html';
+  const url = frontendUrl;
   const wc = { getURL: () => url, setWindowOpenHandler: () => {}, on: () => {} };
   const win = { webContents: wc, loadFile: () => {} };
   const backend = { on: () => {}, stdout: { on: () => {} }, stderr: { on: (_event, listener) => stderrData = listener }, exitCode: null, stdin: { writable: true, write: () => {} } };
@@ -101,7 +105,7 @@ test('autoplay switch is applied before ready without overriding feature switche
 });
 test('only an authorized start_stream focuses the player window and renderer', () => {
   const handlers = new Map(); let focused=0; let rendererFocused=0; let shown=0; let quits=0;
-  const url='file:///app/dist/index.html';
+  const url=frontendUrl;
   const wc={getURL:()=>url,focus:()=>rendererFocused++,setWindowOpenHandler:()=>{},on:()=>{}};
   const win={webContents:wc,show:()=>shown++,focus:()=>focused++,loadFile:()=>{}};
   const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}},exitCode:null,stdin:{writable:true,write:()=>{}}};
@@ -141,7 +145,7 @@ test('settings IPC traverses both allowlists, rejecting arbitrary filesystem ope
 });
 
 test('fullscreen IPC rejects foreign senders, subframes, remote documents and invalid actions', () => {
-  const handlers=new Map();let mutations=0;const url='file:///app/dist/index.html';
+  const handlers=new Map();let mutations=0;const url=frontendUrl;
   const wc={getURL:()=>url,setWindowOpenHandler:()=>{},on:()=>{}};
   const win={webContents:wc,loadFile:()=>{},isDestroyed:()=>false,isFullScreen:()=>false,
     getNormalBounds:()=>({x:10,y:20,width:900,height:600}),isMaximized:()=>false,isMenuBarVisible:()=>true,
