@@ -1,0 +1,11 @@
+name: Temporary environment restriction probe
+on:
+  pull_request:
+permissions: {}
+jobs:
+  disallowed-pr-ref:
+    name: Reject PR ref for release environment
+    runs-on: ubuntu-24.04
+    environment: xjaus-release
+    steps:
+      - run: echo unexpected-execution
