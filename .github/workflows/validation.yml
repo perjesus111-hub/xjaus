@@ -35,7 +35,7 @@ jobs:
         run: npm test
       - name: Nonpublishing candidate consistency tests
         if: runner.os == 'Linux'
-        run: node --test scripts/verify-ci-candidate-manifest.cjs
+        run: node --test scripts/verify-ci-candidate-manifest.cjs scripts/verify-ci-transport-mock.cjs
       - name: Windows frontend and Electron tests
         if: runner.os == 'Windows'
         run: npx vitest run && node --test electron/verify-security.cjs electron/verify-icons.cjs electron/verify-windows.cjs electron/verify-window-state.cjs electron/verify-window-drag.cjs

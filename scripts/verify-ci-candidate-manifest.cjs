@@ -88,3 +88,56 @@ test('rejects malformed metadata, non-exact claims, and unsafe filesystem entrie
   fs.linkSync(file,backup); assert.throws(() => run(), /Invalid artifact/); fs.unlinkSync(backup);
   fs.unlinkSync(file); fs.mkdirSync(file); assert.throws(() => run(), /Invalid artifact/);
 });
+
+// These records and the policy are synthetic assertions, not authenticated CI
+// claims, effective token permissions, human review, or release authorization.
+function claimedRecords(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-claims-'));
+  t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+  const artifacts = namesFor('1.2.3').map(name => {
+    const bytes = Buffer.from(name);
+    fs.writeFileSync(path.join(dir, name), bytes);
+    return {name, size:bytes.length, sha256:crypto.createHash('sha256').update(bytes).digest('hex')};
+  });
+  const manifest = {schema:1, version:'1.2.3', commit:'a'.repeat(40), origin:'ci', artifacts};
+  const review = {...manifest, artifacts:structuredClone(artifacts), status:'recorded-nonauthenticated-nonpublishing', ref:'refs/heads/main', permissions:{contents:'read'}};
+  const policy = {version:manifest.version, commit:manifest.commit, origin:manifest.origin, allowedRefs:['refs/heads/main'], permissions:{contents:'read'}};
+  const args = {dir, manifest, review, policy};
+  assert.equal(validate(args).status, 'consistent-nonauthenticated-nonpublishing');
+  return args;
+}
+
+test('rejects a missing manifest', t => {
+  const args = claimedRecords(t);
+  assert.throws(() => validate({...args, manifest:null}), /Manifest, review and independent policy required/);
+});
+
+test('rejects a missing nonauthenticated review record', t => {
+  const args = claimedRecords(t);
+  assert.throws(() => validate({...args, review:null}), /Manifest, review and independent policy required/);
+});
+
+test('rejects a claimed ref outside the independent policy', t => {
+  const args = claimedRecords(t);
+  assert.throws(() => validate({...args, review:{...args.review, ref:'refs/heads/untrusted'}}), /Ref not allowed/);
+});
+
+test('rejects absent claimed token permissions', t => {
+  const args = claimedRecords(t);
+  assert.throws(() => validate({...args, review:{...args.review, permissions:undefined}}), /Review permissions required/);
+  assert.throws(() => validate({...args, review:{...args.review, permissions:{}}}), /Missing permission: contents/);
+});
+
+test('rejects excessive claimed token permissions', t => {
+  const args = claimedRecords(t);
+  for (const permissions of [{contents:'write'}, {contents:'read', actions:'read'}]) {
+    assert.throws(() => validate({...args, review:{...args.review, permissions}}), /Excessive permission/);
+  }
+});
+
+test('rejects artifact bytes whose hash mismatches both records', t => {
+  const args = claimedRecords(t);
+  const artifact = args.manifest.artifacts[0];
+  fs.writeFileSync(path.join(args.dir, artifact.name), Buffer.alloc(artifact.size, 0));
+  assert.throws(() => validate(args), /SHA-256 mismatch/);
+});
