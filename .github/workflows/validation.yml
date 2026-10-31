@@ -58,8 +58,6 @@ jobs:
     name: Linux backend build and tests
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -71,6 +69,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - run: cargo build --locked --manifest-path src-tauri/Cargo.toml --bin xjaus_backend
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+        env:
+          TMPDIR: ${{ runner.temp }}
 
   windows-backend:
     name: Windows backend build and tests
