@@ -1,4 +1,5 @@
 import { createLoginCode } from './login-code';
+import { bindSystemColorScheme } from './system-theme';
 import { createDeviceLoginFlow, isAllowedMicrosoftVerificationUri, type DeviceLoginState } from './device-login-flow';
 import { settleRemoteStop } from './stream-stop';
 import { createConsolePolling } from './console-polling';
@@ -8,6 +9,10 @@ import { createControllerPresence } from './controller-presence';
 import { removeUnfavoritedCards } from './favorite-focus';
 import { ViewFocusIntent } from './ten-foot';
 localizeDocument();
+const disposeSystemColorScheme = typeof window.matchMedia === 'function'
+  ? bindSystemColorScheme(window.matchMedia('(prefers-color-scheme: dark)'))
+  : () => {};
+window.addEventListener('pagehide', disposeSystemColorScheme, { once: true });
 document.documentElement.classList.add("i18n-ready");
 const disposeWindowModeControls = bindWindowModeControls(document, () => requestPlayerFullscreen('toggle'));
 window.addEventListener('pagehide', disposeWindowModeControls, { once: true });

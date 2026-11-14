@@ -10,12 +10,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 - Linux windowed mode uses the compositor's native title bar, including at sign-in, rather than a hidden title bar. Its appearance follows the desktop theme; Wayland controls final positioning.
 - The Linux AppImage is named `XJAUS-1.2.3-x86_64.AppImage`; RPM, DEB and Windows naming remain unchanged.
+- The Linux AppImage uses the static type-2 runtime (electron-builder appimage toolset `1.0.3`, runtime 20251108). The runtime is a static-pie ELF with no dynamic `NEEDED` entries, so mounting no longer depends on the host's `libfuse2`; Electron itself still requires the standard desktop libraries listed in the DEB/RPM dependencies.
+- The desktop interface follows the operating system color scheme: Electron derives the window background from `nativeTheme`, the renderer mirrors `prefers-color-scheme` on `<html data-system-theme>`, and the stylesheet carries a light-theme variant. The in-game stream HUD deliberately stays dark.
+- Linux packaging (`npm run dist:linux`) runs inside a digest-pinned Debian trixie container (`node:24.22.3-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0`, Rust 1.96.0) and executes the build as the invoking user's UID/GID, keeping host toolchain drift out of the artifact provenance.
 - The supported AppImage build path refuses an unavailable user-namespace probe and rejects `--no-sandbox` rather than disabling Electron's sandbox silently. The conservative probe may reject systems that could use a different sandbox mechanism.
 
 ### Validation limits
 
-- AppImageUpdate / zsync remains disabled for distribution; the separate prototype is experimental and unauthenticated. The black-and-gold interface remains the default.
-- Exact normal-window geometry and maximization restoration, dashboard dragging, physical controller, authenticated streaming, physical ultrawide displays and native Windows remain unverified. Linux and Windows installer builds completed locally; this is not a release announcement.
+- AppImageUpdate / zsync remains disabled for distribution; the separate prototype is experimental and unauthenticated. Its pinned appimagetool snapshot (SHA-256 `793fca0c…`) is no longer downloadable — the continuous asset was rebuilt and the 1.9.1/1.9.0 tagged assets hash differently — so re-pinning requires a new independent verification decision before any real-artifact embedding test.
+- Dark remains the default appearance on systems without a light preference; light-system verification covered a browser preview of the built renderer plus unit tests, not yet the packaged window.
+- Exact normal-window geometry and maximization restoration, dashboard dragging, physical controller, authenticated streaming, physical ultrawide displays and native Windows remain unverified. Linux AppImage/RPM/DEB were rebuilt locally inside the pinned container on 2026-11-14 (SHA-256 in `release/linux/SHA256SUMS`); they are unsigned and not approved for release.
 
 ## [1.2.2] - 2026-10-26
 

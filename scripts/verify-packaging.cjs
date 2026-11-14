@@ -2,6 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { artifactName, linuxBuilderArgs } = require('./packaging.cjs');
+const { BASE_IMAGE, BUILDER_IMAGE, RUST_VERSION, dockerRunArgs } = require('./linux-builder-container.cjs');
 
 test('AppImage has no redundant linux segment, while distro names stay unchanged', () => {
   assert.equal(artifactName('1.2.3', 'AppImage'), 'XJAUS-1.2.3-x86_64.AppImage');
@@ -9,10 +10,21 @@ test('AppImage has no redundant linux segment, while distro names stay unchanged
   assert.equal(artifactName('1.2.3', 'deb'), 'XJAUS-1.2.3-linux-amd64.deb');
 });
 
-test('builder gets AppImage-specific naming override and publishing stays disabled', () => {
+test('Linux package build uses a digest-pinned Debian baseline and preserves host ownership', () => {
+  assert.equal(BASE_IMAGE, 'node:24.22.3-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0');
+  assert.equal(RUST_VERSION, '1.96.0');
+  assert.equal(BUILDER_IMAGE, 'xjaus-linux-builder:node24-trixie-rust1.96.0');
+  const args = dockerRunArgs('/project', 1234, 5678);
+  assert.ok(args.includes('--user') && args[args.indexOf('--user') + 1] === '1234:5678');
+  assert.ok(args.includes('XJAUS_IN_LINUX_BUILDER=1'));
+  assert.ok(args.includes('type=bind,src=/project,dst=/workspace'));
+});
+
+test('builder gets AppImage-specific naming override, a static runtime, and publishing stays disabled', () => {
   const args = linuxBuilderArgs();
   assert.ok(args.includes('--publish') && args[args.indexOf('--publish') + 1] === 'never');
   assert.ok(args.includes('-c.appImage.artifactName=XJAUS-${version}-${arch}.${ext}'));
+  assert.ok(args.includes('-c.toolsets.appimage=1.0.3'));
 });
 
 

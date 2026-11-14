@@ -42,14 +42,14 @@ Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an
 
 ### AppImage
 
-For the unreleased 1.2.3 build, the intended filename is `XJAUS-1.2.3-x86_64.AppImage`. On Linux, windowed mode uses the desktop's native title bar; its appearance depends on the desktop theme. AppImageUpdate / `.zsync` support is not currently provided or validated.
+For the unreleased 1.2.3 build, the intended filename is `XJAUS-1.2.3-x86_64.AppImage`. It bundles a statically linked type-2 runtime, so mounting it does not require the distribution's libfuse2. On Linux, windowed mode uses the desktop's native title bar, and the interface follows the operating system's light/dark preference (the in-game stream HUD stays dark). AppImageUpdate / `.zsync` support is not currently provided or validated.
 
 ```sh
 chmod +x XJAUS-*.AppImage
 ./XJAUS-*.AppImage
 ```
 
-AppImage support may require your distribution's FUSE compatibility package. If FUSE is unavailable, try the runtime's `--appimage-extract-and-run` option. XJAUS refuses to start when its user-namespace sandbox probe fails or `unshare` is missing, and rejects `--no-sandbox`; check your distribution's sandbox and user-namespace settings instead. This conservative check can also reject systems where another sandbox mechanism might otherwise work. On Linux, verifying the AppImage build requires `7z` with SquashFS support. Use the documented `npm run dist:linux` build path: invoking electron-builder directly bypasses XJAUS's launcher hardening and verification.
+The bundled AppImage runtime is a static-pie ELF and does not require your distribution's FUSE compatibility package; if a distribution still refuses to mount it, `--appimage-extract-and-run` is an alternative. XJAUS refuses to start when its user-namespace sandbox probe fails or `unshare` is missing, and rejects `--no-sandbox`; check your distribution's sandbox and user-namespace settings instead. This conservative check can also reject systems where another sandbox mechanism might otherwise work. On Linux, verifying the AppImage build requires `7z` with SquashFS support. Use the documented `npm run dist:linux` build path (it delegates to a digest-pinned Debian container and needs Docker): invoking electron-builder directly bypasses XJAUS's launcher hardening and verification.
 
 ### Fedora / RPM-based distributions
 

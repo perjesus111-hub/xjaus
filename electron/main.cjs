@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, shell, session, clipboard, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, clipboard, screen, nativeTheme } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { allowedCommand, trustedFrame, externalUrl, externalLoginUrl, allowedClipboardText } = require('./security.cjs');
 const { systemLocaleFromEnvironment } = require('./locale.cjs');
+const { bindNativeTheme, windowBackgroundColor } = require('./system-theme.cjs');
 
 const { iconPath } = require('./icons.cjs');
 app.setName('XJAUS');
@@ -47,6 +48,7 @@ let fullscreen;
 let backend;
 let window;
 let sequence = 0;
+const disposeNativeTheme = bindNativeTheme(nativeTheme, () => window);
 let stdoutBuffer = '';
 let stderrBuffer = '';
 const pending = new Map();
@@ -170,7 +172,7 @@ app.whenReady().then(() => {
   const restoreMaximized = Boolean(windowStateStore.get('windowState')?.maximized);
   window = new BrowserWindow({
     ...restoredBounds, minWidth: 860, minHeight: 600, title: 'XJAUS',
-    backgroundColor: '#090a0b', autoHideMenuBar: true, icon: iconPath(app),
+    backgroundColor: windowBackgroundColor(nativeTheme.shouldUseDarkColors), autoHideMenuBar: true, icon: iconPath(app),
     // Linux uses the compositor's native title bar, including on the login screen.
     // Wayland does not support moving a window via programmatic positioning.
     ...(process.platform === 'linux' ? {} : { titleBarStyle: 'hidden' }),
@@ -198,5 +200,6 @@ app.whenReady().then(() => {
 });
 app.on('window-all-closed', () => { app.quit(); });
 app.on('before-quit', () => {
+  disposeNativeTheme();
   if (backend && backend.exitCode === null) { backend.stdin.end(); backend.kill(); }
 });

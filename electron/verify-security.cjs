@@ -8,6 +8,8 @@ const frontend = path.resolve('/app/electron', '../dist/index.html');
 const frontendUrl = pathToFileURL(frontend).href;
 const { trustedFrame, externalLoginUrl, allowedCommand, allowedClipboardText } = require('./security.cjs');
 const { systemLocaleFromEnvironment } = require('./locale.cjs');
+const { EventEmitter } = require('node:events');
+const nativeThemeStub = () => Object.assign(new EventEmitter(), { themeSource: 'dark', shouldUseDarkColors: true });
 
 test('system locale mapping preserves the configured regional preference and precedence', () => {
   assert.equal(systemLocaleFromEnvironment({ LC_ALL: '', LC_MESSAGES: 'es_ES.UTF-8', LANG: 'en_US.UTF-8' }), 'es-ES');
@@ -42,11 +44,11 @@ test('support preload dispatch reaches only authorized external shell, never app
   const handlers=new Map(), opened=[], navigations=[];
   const url=frontendUrl;
   const wc={getURL:()=>url,setWindowOpenHandler:()=>{},on:()=>{}};
-  const win={webContents:wc,loadFile:value=>navigations.push(value)};
+  const win={setBackgroundColor:()=>{},webContents:wc,loadFile:value=>navigations.push(value)};
   const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}}};
   const app={getPath:()=>'/isolated-app-data',setPath:()=>{},setName:()=>{},setAppUserModelId:()=>{},setDesktopName:()=>{},getAppPath:()=>'/app',commandLine:{appendSwitch:()=>{}},whenReady:()=>({then:fn=>fn()}),on:()=>{}};
   runInNewContext(readFileSync(require.resolve('./main.cjs'),'utf8'),{
-    process,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},shell:{openExternal:async value=>opened.push(value)},ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:require(name),__dirname:'/app/electron'});
+    process,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},nativeTheme:nativeThemeStub(),shell:{openExternal:async value=>opened.push(value)},ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:require(name),__dirname:'/app/electron'});
   const frame={url};frame.top=frame;const event={sender:wc,senderFrame:frame};
   let bridge;
   runInNewContext(readFileSync(require.resolve('./preload.cjs'),'utf8'),{require:()=>({contextBridge:{exposeInMainWorld:(_name,value)=>bridge=value},ipcRenderer:{invoke:(channel,...args)=>handlers.get(channel)(event,...args)}})});
@@ -66,14 +68,14 @@ test('verification and clipboard bridges validate at preload and Electron main',
   const handlers = new Map(); const opened = []; const copied = []; const logs = []; let stderrData;
   const url = frontendUrl;
   const wc = { getURL: () => url, setWindowOpenHandler: () => {}, on: () => {} };
-  const win = { webContents: wc, loadFile: () => {} };
+  const win = { setBackgroundColor: () => {}, webContents: wc, loadFile: () => {} };
   const backend = { on: () => {}, stdout: { on: () => {} }, stderr: { on: (_event, listener) => stderrData = listener }, exitCode: null, stdin: { writable: true, write: () => {} } };
   const app = { getPath: () => '/isolated-app-data', setPath: () => {}, setName: () => {}, setAppUserModelId: () => {}, setDesktopName: () => {}, getAppPath: () => '/app', commandLine: { appendSwitch: () => {} }, whenReady: () => ({ then: fn => fn() }), on: () => {} };
   runInNewContext(readFileSync(require.resolve('./main.cjs'),'utf8'), {
     process,
     console: { info: (...args) => logs.push(args), warn: (...args) => logs.push(args), error: (...args) => logs.push(args) },
     require: name => name === 'electron'
-      ? { app, BrowserWindow: function(){ return win; }, shell: { openExternal: async value => opened.push(value) }, clipboard: { writeText: value => copied.push(value) }, ipcMain: { handle: (key, fn) => handlers.set(key, fn) }, session: { defaultSession: { setPermissionRequestHandler: () => {} } } }
+      ? { app, BrowserWindow: function(){ return win; }, nativeTheme: nativeThemeStub(), shell: { openExternal: async value => opened.push(value) }, clipboard: { writeText: value => copied.push(value) }, ipcMain: { handle: (key, fn) => handlers.set(key, fn) }, session: { defaultSession: { setPermissionRequestHandler: () => {} } } }
       : name === 'node:child_process' ? { spawn: () => backend } : require(name),
     __dirname: '/app/electron',
   });
@@ -98,7 +100,7 @@ test('autoplay switch is applied before ready without overriding feature switche
   const source=readFileSync(require.resolve('./main.cjs'),'utf8');
   const app={getPath:()=>'/isolated-app-data',setPath:()=>{},setName:()=>{},setAppUserModelId:()=>{},setDesktopName:()=>{},getAppPath:()=>'/app',commandLine:{appendSwitch:(...args)=>calls.push(args)},whenReady:()=>{calls.push(['ready']);return {then:()=>{}}},on:()=>{}};
   const testProcess = { ...process, env: { ...process.env, LC_ALL: '', LC_MESSAGES: '', LANG: 'es_ES.UTF-8' } };
-  runInNewContext(source,{process:testProcess,require:(name)=>name==='electron'?{app,ipcMain:{handle:()=>{}}}:require(name),__dirname});
+  runInNewContext(source,{process:testProcess,require:(name)=>name==='electron'?{app,nativeTheme:nativeThemeStub(),ipcMain:{handle:()=>{}}}:require(name),__dirname});
   assert.deepEqual(calls[0],['lang','es-ES']);
   assert.ok(calls.findIndex(c=>c[0]==='autoplay-policy') < calls.findIndex(c=>c[0]==='ready'));
   if(process.platform==='linux') assert.deepEqual(calls.find(c=>c[0]==='enable-features'),['enable-features','VaapiVideoDecoder,VaapiIgnoreDriverChecks']);
@@ -107,11 +109,11 @@ test('only an authorized start_stream focuses the player window and renderer', (
   const handlers = new Map(); let focused=0; let rendererFocused=0; let shown=0; let quits=0;
   const url=frontendUrl;
   const wc={getURL:()=>url,focus:()=>rendererFocused++,setWindowOpenHandler:()=>{},on:()=>{}};
-  const win={webContents:wc,show:()=>shown++,focus:()=>focused++,loadFile:()=>{}};
+  const win={setBackgroundColor:()=>{},webContents:wc,show:()=>shown++,focus:()=>focused++,loadFile:()=>{}};
   const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}},exitCode:null,stdin:{writable:true,write:()=>{}}};
   const app={getPath:()=>'/isolated-app-data',setPath:()=>{},setName:()=>{},setAppUserModelId:()=>{},setDesktopName:()=>{},getAppPath:()=>'/app',commandLine:{appendSwitch:()=>{}},whenReady:()=>({then:fn=>fn()}),on:()=>{},quit:()=>quits++};
   runInNewContext(readFileSync(require.resolve('./main.cjs'),'utf8'),{
-    process,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:name==='./security.cjs'?{allowedCommand,externalLoginUrl,trustedFrame:(frame)=>frame===url}:require(name),__dirname:'/app/electron'});
+    process,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},nativeTheme:nativeThemeStub(),ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:name==='./security.cjs'?{allowedCommand,externalLoginUrl,trustedFrame:(frame)=>frame===url}:require(name),__dirname:'/app/electron'});
   const frame={url};frame.top=frame;
   const event={sender:wc,senderFrame:frame};
   assert.throws(()=>handlers.get('xjaus:invoke')({...event,sender:{}},'start_stream',{}));
@@ -147,13 +149,13 @@ test('settings IPC traverses both allowlists, rejecting arbitrary filesystem ope
 test('fullscreen IPC rejects foreign senders, subframes, remote documents and invalid actions', () => {
   const handlers=new Map();let mutations=0;const url=frontendUrl;
   const wc={getURL:()=>url,setWindowOpenHandler:()=>{},on:()=>{}};
-  const win={webContents:wc,loadFile:()=>{},isDestroyed:()=>false,isFullScreen:()=>false,
+  const win={setBackgroundColor:()=>{},webContents:wc,loadFile:()=>{},isDestroyed:()=>false,isFullScreen:()=>false,
     getNormalBounds:()=>({x:10,y:20,width:900,height:600}),isMaximized:()=>false,isMenuBarVisible:()=>true,
     setMenuBarVisibility:()=>mutations++,setFullScreen:()=>mutations++};
   const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}}};
   const app={getPath:()=>'/isolated-app-data',setPath:()=>{},setName:()=>{},setAppUserModelId:()=>{},setDesktopName:()=>{},getAppPath:()=>'/app',commandLine:{appendSwitch:()=>{}},whenReady:()=>({then:fn=>fn()}),on:()=>{}};
   runInNewContext(readFileSync(require.resolve('./main.cjs'),'utf8'),{
-    process,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:require(name),__dirname:'/app/electron'});
+    process,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},nativeTheme:nativeThemeStub(),ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:require(name),__dirname:'/app/electron'});
   const frame={url};frame.top=frame;const event={sender:wc,senderFrame:frame};const handler=handlers.get('xjaus:fullscreen');
   for(const invalid of [{...event,sender:{}},{...event,senderFrame:{url,top:frame}},{...event,senderFrame:undefined}]) assert.throws(()=>handler(invalid,'enter'));
   const remote={url:'https://evil.invalid/'};remote.top=remote;

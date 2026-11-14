@@ -5,12 +5,13 @@ const { runInNewContext } = require('node:vm');
 
 function windowOptions(platform) {
   let options;
-  const win = { webContents: { setWindowOpenHandler() {}, on() {} }, loadFile() {} };
+  const win = { setBackgroundColor() {}, webContents: { setWindowOpenHandler() {}, on() {} }, loadFile() {} };
   const app = { getPath: () => '/isolated-app-data', setPath() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {}, getAppPath: () => '/app', commandLine: { appendSwitch() {} }, whenReady: () => ({ then: fn => fn() }), on() {} };
+  const nativeTheme = { themeSource: 'dark', shouldUseDarkColors: true, on() {}, removeListener() {} };
   const backend = { on() {}, stdout: { on() {} }, stderr: { on() {} } };
   runInNewContext(readFileSync(require.resolve('./main.cjs'), 'utf8'), {
     process: { ...process, platform }, __dirname: '/app/electron',
-    require: name => name === 'electron' ? { app, BrowserWindow: function (value) { options = value; return win; }, ipcMain: { handle() {} }, session: { defaultSession: { setPermissionRequestHandler() {} } } } : name === 'node:child_process' ? { spawn: () => backend } : require(name),
+    require: name => name === 'electron' ? { app, BrowserWindow: function (value) { options = value; return win; }, nativeTheme, ipcMain: { handle() {} }, session: { defaultSession: { setPermissionRequestHandler() {} } } } : name === 'node:child_process' ? { spawn: () => backend } : require(name),
   });
   return options;
 }

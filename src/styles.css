@@ -831,3 +831,103 @@ html[data-focus-intensity='strong'] button:focus-visible, html[data-focus-intens
 .stream-menu-hints kbd { font-weight: 800; }
 .stream-telemetry { top: 20px; right: 20px; padding: 10px 12px; border-radius: 8px; font-size: 12px; background: rgba(8,9,11,.76); }
 @media (max-width: 720px) { .settings-layout { grid-template-columns: 1fr; } .setting-row { flex-direction: column; align-items: flex-start; } .setting-row select { min-width: 0; width: 100%; } .app-main .settings-grid { grid-template-columns: 1fr; } .stream-menu { width: calc(100vw - 32px); } }
+
+/* The desktop shell follows the host color scheme; the in-game stream HUD
+   deliberately remains dark for an unobtrusive viewing experience. */
+html[data-system-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f2ec;
+  --bg-card: #ffffff;
+  --bg-card-2: #f8f6f0;
+  --bg-input: #ffffff;
+  --border: #d7d2c7;
+  --border-gold: #c9b36f;
+  --gold: #8c6a0b;
+  --gold-soft: #7e6425;
+  --gold-dim: #8a7137;
+  --text: #25231e;
+  --text-dim: #565249;
+  --text-faint: #716d64;
+  --bg-app: #f3f1eb;
+  --bg-sidebar: #e9e6de;
+  --bg-surface: #ffffff;
+  --bg-surface-raised: #f7f6f1;
+  --bg-hover: #e8e4d9;
+  --border-subtle: #d6d1c6;
+  --gold-bright: #7f6108;
+  --gold-muted: #9b7b33;
+  --text-primary: #211f1a;
+  --text-secondary: #4f4b42;
+  --text-muted: #6c685f;
+}
+html[data-system-theme='light'] body,
+html[data-system-theme='light'] #dashboard,
+html[data-system-theme='light'] #login-screen { color: var(--text-primary); background-color: var(--bg-app); }
+html[data-system-theme='light'] .login-card {
+  border-color: var(--border-subtle);
+  background: linear-gradient(150deg, var(--bg-surface-raised), var(--bg-surface));
+  box-shadow: 0 18px 48px rgba(24, 22, 16, .14);
+}
+html[data-system-theme='light'] .btn-primary {
+  color: #211f1a;
+  border-color: #9b7b33;
+  background: linear-gradient(160deg, #f2d67f, #e0bc4d);
+}
+html[data-system-theme='light'] .btn-primary:hover { background: linear-gradient(160deg, #f6df9b, #e9c95f); }
+html[data-system-theme='light'] .manual-link { color: var(--gold-bright); background: transparent; }
+html[data-system-theme='light'] .app-shell,
+html[data-system-theme='light'] .app-main,
+html[data-system-theme='light'] .sidebar,
+html[data-system-theme='light'] .app-main .panel,
+html[data-system-theme='light'] .settings-section,
+html[data-system-theme='light'] .cloud-context,
+html[data-system-theme='light'] .remote-context {
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  background-color: var(--bg-surface);
+}
+html[data-system-theme='light'] .app-shell { background: var(--bg-app); }
+html[data-system-theme='light'] .sidebar { background: var(--bg-sidebar); }
+html[data-system-theme='light'] .app-main { background: radial-gradient(70% 45% at 70% -10%, rgba(145, 112, 27, .07), transparent 70%), var(--bg-app); }
+html[data-system-theme='light'] .app-main .panel,
+html[data-system-theme='light'] .settings-section,
+html[data-system-theme='light'] .cloud-context { background: var(--bg-surface); }
+html[data-system-theme='light'] .remote-context { background: linear-gradient(160deg, rgba(145,112,27,.08), var(--bg-surface) 45%); }
+html[data-system-theme='light'] .app-main .console-card,
+html[data-system-theme='light'] .app-main .game-card,
+html[data-system-theme='light'] .app-main #cloud-container .game-card,
+html[data-system-theme='light'] .app-main .setting,
+html[data-system-theme='light'] .app-main .setting select,
+html[data-system-theme='light'] .setting-row select,
+html[data-system-theme='light'] .featured-dialog,
+html[data-system-theme='light'] .featured-dialog-actions button {
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  background: var(--bg-surface-raised);
+}
+html[data-system-theme='light'] .app-main .console-card,
+html[data-system-theme='light'] .app-main .game-card { background: var(--bg-surface-raised); }
+html[data-system-theme='light'] .app-main .setting select,
+html[data-system-theme='light'] .setting-row select { background: var(--bg-surface); }
+html[data-system-theme='light'] .dashboard-action-card,
+html[data-system-theme='light'] .dashboard-action-card:first-child {
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  background: linear-gradient(135deg, var(--bg-surface-raised), var(--bg-surface));
+}
+html[data-system-theme='light'] .dashboard-action-card:first-child { border-color: var(--gold-muted); }
+html[data-system-theme='light'] .dashboard-hero h1,
+html[data-system-theme='light'] .dashboard-hero p { color: #fff; }
+html[data-system-theme='light'] .dashboard-hero .eyebrow { color: #f2d67f; }
+html[data-system-theme='light'] .settings-nav-item:hover { color: var(--text-primary); background: var(--bg-hover); }
+html[data-system-theme='light'] .app-main .filter-pill { color: var(--text-secondary); background: var(--bg-surface-raised); }
+html[data-system-theme='light'] .profile-chip { background: rgba(20, 18, 12, .04); border-color: rgba(20, 18, 12, .12); }
+html[data-system-theme='light'] .window-mode-toggle { color: var(--text-primary); border-color: var(--border-subtle); background: var(--bg-surface); }
+html[data-system-theme='light'] .window-mode-toggle:hover,
+html[data-system-theme='light'] .window-mode-toggle:focus-visible { border-color: var(--gold-muted); background: var(--bg-hover); }
+html[data-system-theme='light'] #toast,
+html[data-system-theme='light'] #copy-diagnostics { color: var(--text-primary); border-color: var(--border-subtle); background: var(--bg-surface-raised); }
+html[data-system-theme='light'] .setting-row { border-color: rgba(30, 28, 20, .10); }
+html[data-system-theme='light'] .switch { background: #c2beb3; }
+html[data-system-theme='light'] .switch::after { background: #fff; }
+html[data-system-theme='light'] .switch:checked::after { background: #211f1a; }
