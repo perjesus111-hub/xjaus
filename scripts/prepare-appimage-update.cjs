@@ -2,13 +2,15 @@
 'use strict';
 // EXPERIMENTAL ONLY: output is unsigned and unauthenticated; do not publish or
 // distribute it until a trusted publisher-signature policy is implemented.
-// Pinned official AppImage/appimagetool continuous x86_64 asset, independently verified.
+// Pinned official AppImage/appimagetool release 1.9.1 x86_64 asset (static), independently verified.
+
 const fs = require('node:fs');
-const path = require('node:path');
 const crypto = require('node:crypto');
+const path = require('node:path');
+
 const { execFileSync } = require('node:child_process');
 const { validateGithubUpdateInfo, verifyZsync } = require('./appimage-update-preparation.cjs');
-const PIN = '793fca0ce4bcc309dc65d3f66669f58e3755643e4dadbe03932e7b436128494f';
+const PIN = 'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0';
 const sha = (algorithm, data) => crypto.createHash(algorithm).update(data).digest('hex');
 function main() {
   const [input, tool, output, expectedSha256, ...extra] = process.argv.slice(2);
