@@ -1,3 +1,4 @@
+import {Window} from 'happy-dom';
 import {afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 let readFileSync: (path:URL,encoding:string)=>string;
 beforeAll(async()=>{readFileSync=(await vi.importActual<{readFileSync:typeof readFileSync}>('node:fs')).readFileSync;});
@@ -38,4 +39,13 @@ it('preserves explicit autohide-off preference',()=>{
 it('hidden class and children block pointer interaction; only modal close explicitly reveals toolbar',()=>{
  const css=readFileSync(new URL('./styles.css',import.meta.url),'utf8');const main=readFileSync(new URL('./main.ts',import.meta.url),'utf8');
  expect(css).toContain('.player-toolbar.hud-hidden { opacity: 0; pointer-events: none; transition: opacity .3s');expect(css).toContain(".player-toolbar[data-hud='hidden'] > * { pointer-events: none; }");expect(main).toContain('if(!value)hud.reveal();');expect(main.replace('if(!value)hud.reveal();','')).not.toContain('hud.reveal()');
+});
+it('keeps keyboard focus and HUD visible until focus leaves the toolbar',()=>{
+ const win=new Window();const document=win.document;const hud=document.createElement('div');const button=document.createElement('button');hud.append(button);document.body.append(hud);
+ const cursor=document.createElement('div');const {video,dispatch}=playerVideo();
+ const controller=createPlayerHudController({hud:hud as unknown as import('./hud').HudElement,cursor:cursor as unknown as import('./hud').HudElement,video,window:{document:win.document,addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),setTimeout:(fn:()=>void,ms:number)=>setTimeout(fn,ms),clearTimeout:(id:unknown)=>clearTimeout(id as ReturnType<typeof setTimeout>)} as unknown as import('./hud').HudWindow});
+ dispatch('playing');button.focus();win.dispatchEvent(new win.MouseEvent('mousemove',{clientY:20}));vi.advanceTimersByTime(5000);
+ expect(document.activeElement).toBe(button);expect(controller.peek()).toBe(false);
+ button.blur();vi.advanceTimersByTime(2500);expect(controller.peek()).toBe(true);
+ controller.dispose();hud.remove();
 });

@@ -53,36 +53,3 @@ it('does not let a stale startup auth_status hide a completed interactive login'
   expect(document.querySelector<HTMLElement>('#dashboard')!.hidden).toBe(false);
   expect(document.querySelector<HTMLElement>('#login-screen')!.hidden).toBe(true);
 });
-
-it('does not load a saved session after backend cancellation fails', async () => {
-  vi.useFakeTimers();
-  const values = new Map<string, string>();
-  const storage = {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-  };
-  Object.defineProperty(window, 'localStorage', { configurable: true, value: storage });
-  vi.stubGlobal('localStorage', storage);
-  document.body.innerHTML = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'));
-  fixture.invoke.mockImplementation((command: string) => {
-    if (command === 'load_settings') return Promise.resolve({ resolution: '1920x1080', bitrate: 15000, codec: 'h264', audio: 'opus' });
-    if (command === 'auth_status') return Promise.resolve({ authenticated: false, account: '', storage: '' });
-    if (command === 'begin_login_window') return Promise.resolve({ user_code: 'SYNTHETIC-CODE', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 60, interval: 1 });
-    if (command === 'cancel_login') return Promise.reject(new Error('cancel unavailable'));
-    if (command === 'load_session') return Promise.resolve({ authenticated: true, account: 'synthetic-account', storage: 'test' });
-    return Promise.resolve({});
-  });
-
-  const { i18n } = await import('./i18n');
-  i18n.setPreference('es');
-  await import('./main');
-  await vi.advanceTimersByTimeAsync(0);
-  document.querySelector<HTMLButtonElement>('#btn-login')!.click();
-  await vi.advanceTimersByTimeAsync(0);
-  document.querySelector<HTMLButtonElement>('#manual-login')!.click();
-  await vi.advanceTimersByTimeAsync(0);
-
-  expect(fixture.invoke.mock.calls.some(([command]) => command === 'load_session')).toBe(false);
-  expect(document.querySelector<HTMLElement>('#login-screen')!.hidden).toBe(false);
-  expect(document.querySelector<HTMLElement>('#dashboard')!.hidden).toBe(true);
-});

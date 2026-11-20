@@ -3,7 +3,6 @@ i18n.setPreference('es');
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest';
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
-// @ts-expect-error Node types are not part of the browser build; Vitest runs this import in Node.
 import { readFileSync } from 'node:fs';
 const css: string = readFileSync('src/styles.css', 'utf8');
 const main: string = readFileSync('src/main.ts', 'utf8');

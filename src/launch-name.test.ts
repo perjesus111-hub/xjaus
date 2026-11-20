@@ -17,6 +17,8 @@ it('synthetic backend: stale provisional card refreshes metadata before one laun
  f.invoke.mockImplementation(async(cmd:string)=>{
   if(cmd==='load_settings')return {resolution:'2560x1440',bitrate:30000,codec:'h264',audio:'opus'};
   if(cmd==='auth_status')return {authenticated:true,account:'fixture',storage:''};
+  if(cmd==='begin_connection')return 'backend-generation';
+  if(cmd==='cancel_connection')return undefined;
   if(cmd==='list_consoles_smartglass'||cmd==='list_streaming_servers')return [];
   if(cmd==='list_cloud_titles')return raw;
   if(cmd==='catalog_products')return ++metadataCalls===1 ? {Products:[]} : {Products:[{ProductId:'ABCDEFGHIJKL',LocalizedProperties:[{ProductTitle:'Localized Commercial Valhalla'}]}]};

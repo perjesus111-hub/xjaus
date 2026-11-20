@@ -11,6 +11,7 @@ it('polls visible consoles every 7s without overlap, stale writes, card replacem
   if(cmd==='load_settings')return {resolution:'1920x1080',bitrate:30000,codec:'auto',audio:'opus'};
   if(cmd==='list_consoles_smartglass')return new Promise(r=>pending.push(r));
   if(cmd==='list_streaming_servers')return [{serverId:'v6',name:'Fixture'}];
+  if(cmd==='begin_connection')return 'backend-generation';
   if(cmd==='wake_console')return new Promise(()=>{});
   if(cmd==='list_cloud_titles')return [];
   return {};

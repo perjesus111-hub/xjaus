@@ -7,7 +7,11 @@ export type LanguagePreference=Locale|'auto';
 export const LANGUAGE_KEY='xjaus:language:v1';
 export function resolveLocale(preference:LanguagePreference,languages:readonly string[]=[],language=''):Locale {
  if(preference!=='auto')return preference;
- return [...languages,language].some(value=>/^es(?:[-_]|$)/i.test(value))?'es':'en';
+ for(const value of [...languages,language]) {
+  if(/^es(?:[-_]|$)/i.test(value))return 'es';
+  if(/^en(?:[-_]|$)/i.test(value))return 'en';
+ }
+ return 'en';
 }
 export function createI18n(storage?:Pick<Storage,'getItem'|'setItem'>,languages:readonly string[]=[],language='') {
  // First launch follows the OS language ('auto'); only an explicit saved preference overrides it.

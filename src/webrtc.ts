@@ -400,8 +400,11 @@ export class XboxSessionCoordinator {
     readonly controller: XboxWebRtcController,
     private readonly onIceError: (error: unknown) => void = () => {},
     private readonly onProgress?: (progress: ProvisionProgress) => void,
-    private readonly attemptId?: string,
-  ) {}
+    private readonly attemptId: string = crypto.randomUUID(),
+    private readonly generation: string = '',
+  ) {
+    if (!this.attemptId || !this.generation) throw new Error('Missing connection attempt identifier or generation');
+  }
 
   /** Absorbs a keepalive failure that may resolve after stop() already ran. */
   private absorbLateFailures(promise: Promise<void>): Promise<void> {
@@ -423,9 +426,7 @@ export class XboxSessionCoordinator {
     const ping = send ?? (() => {
       const request = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
         this.checkActive();
-        const result = this.attemptId
-          ? await invoke<T>(command, { ...args, attemptId: this.attemptId })
-          : args ? await invoke<T>(command, args) : await invoke<T>(command);
+        const result = await invoke<T>(command, { ...args, attemptId: this.attemptId, generation: this.generation });
         this.checkActive();
         return result;
       };
@@ -437,9 +438,7 @@ export class XboxSessionCoordinator {
   async negotiate(kind: "home" | "cloud", target: string, profile?: Record<string, unknown>): Promise<void> {
     const request = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
       this.checkActive();
-      const result = this.attemptId
-        ? await invoke<T>(command, { ...args, attemptId: this.attemptId })
-        : args ? await invoke<T>(command, args) : await invoke<T>(command);
+      const result = await invoke<T>(command, { ...args, attemptId: this.attemptId, generation: this.generation });
       this.checkActive();
       return result;
     };
@@ -498,9 +497,7 @@ export class XboxSessionCoordinator {
     } catch { /* Backend cancellation must still run if local peer teardown fails. */ }
     // A keepalive ping can already be over the wire; its 410 SessionNotActive
     // answer is the server confirming our exit, so absorb it silently.
-    this.stopPromise = settleRemoteStop(this.attemptId
-      ? invoke('cancel_connection', { attemptId: this.attemptId })
-      : invoke('stop_stream'));
+    this.stopPromise = settleRemoteStop(invoke('cancel_connection', { attemptId: this.attemptId, generation: this.generation }));
     return this.stopPromise;
   }
 }

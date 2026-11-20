@@ -1,4 +1,3 @@
-// @ts-expect-error Node types intentionally excluded from the renderer tsconfig.
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 

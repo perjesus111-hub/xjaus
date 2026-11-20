@@ -81,12 +81,11 @@ async fn refresh_at(
                 .timeout(std::time::Duration::from_millis(1200))
                 .send()
                 .await;
-            if let Ok(response) = response {
-                if response.status().is_success() {
-                    if let Ok(status) = response.json::<Value>().await {
-                        merge_status(device, &status);
-                    }
-                }
+            if let Ok(response) = response
+                && response.status().is_success()
+                && let Ok(status) = response.json::<Value>().await
+            {
+                merge_status(device, &status);
             }
         }
     };

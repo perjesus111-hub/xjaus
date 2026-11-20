@@ -17,9 +17,9 @@
         <h1><span>XJAUS</span></h1>
         <p class="muted" data-i18n="tagline">Tu consola y la nube de Xbox.</p>
       </div>
-      <button id="btn-login" class="btn-primary btn-full" type="button" data-i18n="signInXbox">Iniciar sesión con Xbox</button>
+      <button id="btn-login" class="btn-primary btn-full" type="button" aria-describedby="login-session-note" data-i18n="signInXbox">Iniciar sesión con Xbox</button>
+      <p id="login-session-note" class="muted" data-i18n="loginSessionNote">Debes iniciar sesión de nuevo cada vez que abras XJAUS.</p>
       <div id="login-feedback" class="login-feedback" aria-live="polite" hidden></div>
-      <button id="manual-login" class="manual-link" type="button" data-i18n="loadSession">Cargar sesión guardada</button>
       <span id="login-status" class="status small" data-state="off" data-i18n="noSession">Sin sesión</span>
     </main>
   </section>

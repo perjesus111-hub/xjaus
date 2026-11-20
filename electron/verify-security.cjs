@@ -60,6 +60,23 @@ test('support preload dispatch reaches only authorized external shell, never app
   for(const invalid of [{...event,sender:{}},{...event,senderFrame:{url,top:frame}},{...event,senderFrame:undefined}])await assert.rejects(handler(invalid,'https://paypal.me/Comicoon'));
   assert.deepEqual(opened,['https://paypal.me/Comicoon']);assert.deepEqual(navigations,baseline);
 });
+test('external URLs reject embedded userinfo and nonstandard ports', () => {
+  const { externalUrl, repositoryUrl } = require('./security.cjs');
+  for (const value of ['https://user:pass@github.com/perjesus111-hub/xjaus', 'https://@github.com/perjesus111-hub/xjaus', 'https://github.com:8443/perjesus111-hub/xjaus']) {
+    assert.equal(repositoryUrl(value), false, value);
+    assert.equal(externalUrl(value), false, value);
+  }
+  for (const value of ['https://user:pass@microsoft.com/devicelogin', 'https://@microsoft.com/devicelogin', 'https://microsoft.com:8443/devicelogin', 'https://www.microsoft.com:8443/link']) {
+    assert.equal(externalLoginUrl(value), false, value);
+    assert.equal(externalUrl(value), false, value);
+    assert.equal(allowedClipboardText(value), false, value);
+  }
+  for (const value of ['https://microsoft.com/devicelogin', 'https://www.microsoft.com/devicelogin', 'https://microsoft.com/link', 'https://www.microsoft.com/link']) {
+    assert.equal(externalLoginUrl(value), true, value);
+    assert.equal(externalUrl(value), true, value);
+    assert.equal(allowedClipboardText(value), true, value);
+  }
+});
 test('external link is restricted to device sign-in', () => {
   assert.equal(externalLoginUrl('https://microsoft.com/devicelogin'), true);
   assert.equal(externalLoginUrl('https://evil.invalid/'), false);
@@ -110,10 +127,10 @@ test('only an authorized start_stream focuses the player window and renderer', (
   const url=frontendUrl;
   const wc={getURL:()=>url,focus:()=>rendererFocused++,setWindowOpenHandler:()=>{},on:()=>{}};
   const win={setBackgroundColor:()=>{},webContents:wc,show:()=>shown++,focus:()=>focused++,loadFile:()=>{}};
-  const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}},exitCode:null,stdin:{writable:true,write:()=>{}}};
+  const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}},exitCode:null,stdin:{writable:true,write:()=>true}};
   const app={getPath:()=>'/isolated-app-data',setPath:()=>{},setName:()=>{},setAppUserModelId:()=>{},setDesktopName:()=>{},getAppPath:()=>'/app',commandLine:{appendSwitch:()=>{}},whenReady:()=>({then:fn=>fn()}),on:()=>{},quit:()=>quits++};
   runInNewContext(readFileSync(require.resolve('./main.cjs'),'utf8'),{
-    process,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},nativeTheme:nativeThemeStub(),ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:name==='./security.cjs'?{allowedCommand,externalLoginUrl,trustedFrame:(frame)=>frame===url}:require(name),__dirname:'/app/electron'});
+    process,Buffer,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},nativeTheme:nativeThemeStub(),ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:name==='./security.cjs'?{allowedCommand,externalLoginUrl,trustedFrame:(frame)=>frame===url}:require(name),__dirname:'/app/electron'});
   const frame={url};frame.top=frame;
   const event={sender:wc,senderFrame:frame};
   assert.throws(()=>handlers.get('xjaus:invoke')({...event,sender:{}},'start_stream',{}));
@@ -181,4 +198,19 @@ test('authorized quit command is in both allowlists but arbitrary commands remai
 test('Linux decoder features merge existing values exactly once without deleting others',()=>{
  const {mergeDecoderFeatures}=require('./features.cjs');
  assert.equal(mergeDecoderFeatures('Existing,VaapiVideoDecoder'), 'Existing,VaapiVideoDecoder,VaapiIgnoreDriverChecks');
+});
+
+test('ephemeral sessions reject saved-session IPC commands in both allowlists', async () => {
+  let bridge; const calls = [];
+  runInNewContext(readFileSync(require.resolve('./preload.cjs'), 'utf8'), { require: () => ({ contextBridge: { exposeInMainWorld: (_name, value) => bridge = value }, ipcRenderer: { invoke: (...args) => { calls.push(args); return Promise.resolve(); } } }) });
+  for (const command of ['load_session', 'persist_session']) {
+    assert.equal(allowedCommand(command), false);
+    await assert.rejects(bridge.invoke(command), /no permitido/);
+  }
+  assert.equal(calls.length, 0);
+  for (const command of ['begin_login_window', 'poll_login', 'cancel_login', 'logout']) {
+    assert.equal(allowedCommand(command), true);
+    await bridge.invoke(command);
+  }
+  assert.deepEqual(calls.map(call => call[1]), ['begin_login_window', 'poll_login', 'cancel_login', 'logout']);
 });

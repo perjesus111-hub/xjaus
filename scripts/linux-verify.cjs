@@ -43,9 +43,61 @@ function extractAndVerifyLauncher(artifact, extractor = '7z', inheritedFd) {
 }
 exports.extractAndVerifyLauncher = extractAndVerifyLauncher;
 
+// Read only the license member; never run runtime or package hooks.
+function verifyPackagedLicense(artifact, ext, expected, run = spawnSync) {
+  assert.ok(Buffer.isBuffer(expected) && expected.length > 0 && expected.length <= 65536);
+  const member = './opt/XJAUS/resources/LICENSE';
+  const commands = {
+    AppImage: ['7z', ['x', '-so', '-tSquashFS', '-spd', artifact, 'resources/LICENSE']],
+    rpm: ['bash', ['-o', 'pipefail', '-c', 'rpm2archive -n - < "$1" | tar -xOf - -- "$2"', 'license', artifact, member]],
+    deb: ['bash', ['-o', 'pipefail', '-c', 'dpkg-deb --fsys-tarfile "$1" | tar -xOf - -- "$2"', 'license', artifact, member]],
+  };
+  assert.ok(Object.hasOwn(commands, ext), `Unknown package type: ${ext}`);
+  const [tool, args] = commands[ext];
+  const result = run(tool, args, {maxBuffer: 65536, timeout: 120000});
+  assert.equal(result.status, 0, `${ext} LICENSE extraction failed: ${result.error || result.stderr}`);
+  assert.ok(expected.equals(result.stdout), `${ext} LICENSE mismatch`);
+}
+exports.verifyPackagedLicense = verifyPackagedLicense;
+
+// Query archived metadata, not the mode/owner of a locally extracted copy.
+function verifyDesktopEntry(artifact, ext, run = spawnSync) {
+  const member = '/usr/share/applications/io.github.xjaus.xjaus.desktop';
+  const rpm = ext === 'rpm';
+  const [tool, args] = rpm
+    ? ['rpm', ['-qp', '--qf', '[%{FILENAMES}\t%{FILEMODES:perms}\t%{FILEUSERNAME}\t%{FILEGROUPNAME}\n]', artifact]]
+    : ['dpkg-deb', ['--contents', artifact]];
+  const result = run(tool, args, {encoding:'utf8', timeout:120000, env:{...process.env, LC_ALL:'C'}});
+  assert.equal(result.status, 0, `${ext} desktop listing failed: ${result.error || result.stderr}`);
+  const lines = result.stdout.split(/\r?\n/);
+  const entries = rpm ? lines.filter(line => line.startsWith(`${member}\t`))
+    : lines.filter(line => line.includes(` .${member}`) && line.split(` .${member}`)[1].match(/^(?:$| -> | link to )/));
+  const valid = rpm ? entries[0] === `${member}\t-rw-r--r--\troot\troot`
+    : /^-rw-r--r--\s+(?:root\/root|0\/0)\s/.test(entries[0]) && entries[0].endsWith(` .${member}`);
+  assert.ok(entries.length === 1 && valid, `${ext} desktop entry must be a unique root:root regular file with mode 0644`);
+}
+exports.verifyDesktopEntry = verifyDesktopEntry;
+
+function verifyDebLibc(artifact, run = spawnSync) {
+  const result = run('dpkg-deb', ['-f', artifact, 'Depends'], {encoding:'utf8', timeout:120000});
+  assert.equal(result.status, 0, `DEB Depends query failed: ${result.error || result.stderr}`);
+  assert.ok(result.stdout.split(',').some(clause => /^libc6\s*\(\s*>=\s*2\.39\s*\)$/.test(clause.trim())),
+    'DEB Depends must include unconditional libc6 (>= 2.39)');
+}
+exports.verifyDebLibc = verifyDebLibc;
+
+function verifyRpmGlibc(artifact) {
+  const capability = 'libc.so.6(GLIBC_2.39)(64bit)';
+  const result = spawnSync('rpm', ['-qp', '--requires', artifact],
+    {encoding:'utf8', timeout:120000, env:{...process.env, LC_ALL:'C'}});
+  assert.equal(result.status, 0, `RPM Requires query failed: ${result.error || result.stderr}`);
+  assert.ok(result.stdout.split(/\r?\n/).includes(capability),
+    `RPM Requires must include unconditional ${capability}`);
+}
+
 // Snapshot every input before invoking an external parser. The private directory
 // prevents other users from replacing snapshots; the builder user remains trusted.
-function verifyArtifacts(files, gate, verifyAppImage = extractAndVerifyLauncher) {
+function verifyArtifacts(files, gate, verifyAppImage = extractAndVerifyLauncher, expectedLicense) {
   fs.rmSync(gate, {force: true});
   const dir = fs.mkdtempSync(path.join(path.dirname(gate), '.verify-'));
   try {
@@ -61,6 +113,15 @@ function verifyArtifacts(files, gate, verifyAppImage = extractAndVerifyLauncher)
       } finally { fs.closeSync(fd); }
     });
     verifyAppImage(artifacts[0].snapshot);
+    if (expectedLicense !== undefined) {
+      for (const {file, snapshot} of artifacts) {
+        const ext = path.extname(file).slice(1);
+        verifyPackagedLicense(snapshot, ext, expectedLicense);
+        if (ext === 'rpm' || ext === 'deb') verifyDesktopEntry(snapshot, ext);
+        if (ext === 'deb') verifyDebLibc(snapshot);
+        if (ext === 'rpm') verifyRpmGlibc(snapshot);
+      }
+    }
     for (const item of artifacts) {
       const fd = fs.openSync(item.file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
       try {
@@ -113,7 +174,9 @@ const files = ['AppImage', 'rpm', 'deb'].map(ext => {
   assert.ok(fs.statSync(file).size > 1024, name);
   return file;
 });
-const artifacts = verifyArtifacts(files, path.join(output, 'SHA256SUMS'));
+const artifacts = verifyArtifacts(files, path.join(output, 'SHA256SUMS'), undefined,
+  fs.readFileSync(path.join(root, 'LICENSE')));
+console.log('Project LICENSE verified byte-for-byte inside AppImage, RPM and DEB');
 console.log('Packaged backend path, byte identity, mode 0755, ASAR metadata and renderer verified');
 for (const {file, sha256} of artifacts) console.log(`${sha256}  ${file}`);
 

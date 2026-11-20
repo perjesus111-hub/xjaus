@@ -4,7 +4,24 @@ All notable changes to XJAUS are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 versions follow [Semantic Versioning](https://semver.org/).
 
-## [1.2.3] - Unreleased
+## [1.2.4] - Unreleased
+
+### Changed
+
+- Use in-memory authentication only; restarting requires interactive sign-in. Sign-out invalidates local authentication and attempts legacy credential cleanup without claiming server-side revocation.
+- Strengthen stream attempt ownership, cancellation and logout handling across the renderer, Electron IPC and Rust runners; bound sidecar IPC admission and message sizes.
+- Align application version metadata; use explicit inert DEB/RPM package hooks. Keep AppImage differential updates out of distribution.
+
+### Dependencies
+
+- Reconcile TLS lockfile policy across both Rust manifests and update the Windows Tokio lock entry.
+- Override the specified minimatch 9.x/10.x build dependency ranges to 11.0.8. Other majors remain in the lockfile; this is not an installed-tree or package-level audit.
+
+### Validation limits
+
+- This is source preparation. Hosted CI, candidate payloads, native Windows installation, real-account streaming, signing and publication are not established by local static checks.
+
+## [1.2.3] - Historical unreleased preparation
 
 ### Changed
 

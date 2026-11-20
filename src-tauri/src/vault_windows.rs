@@ -1,41 +1,39 @@
-//! Windows Credential Manager holds the small authoritative commit pointer.
-//! Oversized bundles are AEAD-encrypted in immutable per-generation files with
-//! private Windows DACLs. Previous generation remains available for rollback.
-//! Direct JSON credentials from earlier versions remain readable.
-//! Native Windows save/load/replace/delete and power-loss behavior still require
-//! validation on Windows; cross compilation alone cannot prove Win32 semantics.
+//! Windows sessions are memory-only. Logout still removes legacy persisted data.
+static SESSION_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 use crate::auth::TokenBundle;
+#[cfg(test)]
 use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit},
 };
+#[cfg(test)]
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use zeroize::Zeroizing;
 
+#[cfg(test)]
 const MAGIC: &[u8; 8] = b"XJAUSV01";
-const MAX_FILE: u64 = 16 * 1024 * 1024;
+#[cfg(test)]
 #[derive(Serialize, Deserialize, Clone)]
 struct Generation {
     id: String,
     key: String,
 }
+#[cfg(test)]
 impl Drop for Generation {
     fn drop(&mut self) {
         use zeroize::Zeroize;
         self.key.zeroize();
     }
 }
+#[cfg(test)]
 #[derive(Serialize, Deserialize)]
 struct Pointer {
     xjaus_vault: u8,
     current: Generation,
     previous: Option<Generation>,
 }
-fn random<const N: usize>() -> Result<[u8; N], String> {
-    let mut b = [0; N];
-    getrandom::getrandom(&mut b).map_err(|_| "Vault randomness unavailable".to_string())?;
-    Ok(b)
-}
+#[cfg(test)]
 fn seal(plain: &[u8], key: &[u8; 32], nonce: &[u8; 24]) -> Result<Vec<u8>, String> {
     let mut blob = Vec::with_capacity(plain.len() + 48);
     blob.extend_from_slice(MAGIC);
@@ -47,6 +45,7 @@ fn seal(plain: &[u8], key: &[u8; 32], nonce: &[u8; 24]) -> Result<Vec<u8>, Strin
     );
     Ok(blob)
 }
+#[cfg(test)]
 fn open(blob: &[u8], key: &[u8; 32]) -> Result<Zeroizing<Vec<u8>>, String> {
     if blob.len() < 48 || &blob[..8] != MAGIC {
         return Err("Invalid vault envelope".into());
@@ -56,6 +55,7 @@ fn open(blob: &[u8], key: &[u8; 32]) -> Result<Zeroizing<Vec<u8>>, String> {
         .map(Zeroizing::new)
         .map_err(|_| "Vault authentication failed".into())
 }
+#[cfg(test)]
 fn pointer(bytes: &[u8]) -> Result<Option<Pointer>, String> {
     let v: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|_| "Invalid stored session")?;
@@ -77,24 +77,9 @@ fn pointer(bytes: &[u8]) -> Result<Option<Pointer>, String> {
     }
     Ok(Some(p))
 }
-#[cfg(windows)]
-fn generation_path(id: &str) -> Result<std::path::PathBuf, String> {
-    Ok(crate::windows_fs::root("auth")?.join(format!("vault-{id}.enc")))
-}
-#[cfg(windows)]
-fn read_generation(g: &Generation) -> Result<TokenBundle, String> {
-    let key: [u8; 32] = hex::decode(&g.key)
-        .map_err(|_| "Invalid vault key")?
-        .try_into()
-        .map_err(|_| "Invalid vault key")?;
-    let blob = crate::windows_fs::read(&generation_path(&g.id)?, MAX_FILE)?;
-    serde_json::from_slice(&open(&blob, &key)?).map_err(|_| "Invalid stored session".into())
-}
-
+production_or_tauri! {
 const SERVICE: &str = "io.github.xjaus.xjaus";
 const ACCOUNT: &str = "xbox-auth-v1";
-/// Microsoft: CredentialBlobSize máximo por credencial (CREDENTIALW).
-pub const CRED_MAX_CREDENTIAL_BLOB_SIZE: usize = 2560;
 
 fn entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, ACCOUNT)
@@ -105,142 +90,155 @@ fn overflow_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, "xbox-auth-overflow")
         .map_err(|_| "Windows Credential Manager unavailable".into())
 }
-
-/// true si el blob cabe en una credencial única (compatibilidad plena).
-pub fn fits_single_credential(blob_len: usize) -> bool {
-    blob_len <= CRED_MAX_CREDENTIAL_BLOB_SIZE
 }
 
-pub fn save(bundle: &TokenBundle) -> Result<(), String> {
-    let bytes = Zeroizing::new(serde_json::to_vec(bundle).map_err(|_| "Cannot encode session")?);
-    if fits_single_credential(bytes.len()) {
-        return entry()?
-            .set_secret(&bytes)
-            .map_err(|_| "Cannot save session in Windows Credential Manager".into());
+tauri_or_test! {
+    /// Maximum Windows Credential Manager blob size (CREDENTIALW).
+    pub const CRED_MAX_CREDENTIAL_BLOB_SIZE: usize = 2560;
+
+    pub fn fits_single_credential(blob_len: usize) -> bool {
+        blob_len <= CRED_MAX_CREDENTIAL_BLOB_SIZE
     }
-    #[cfg(windows)]
-    {
-        if bytes.len() as u64 > MAX_FILE - 48 {
-            return Err("Vault payload too large".into());
-        }
-        let previous = match entry()?.get_secret() {
-            Ok(old) => pointer(&old)?.map(|p| p.current),
-            Err(keyring::Error::NoEntry) => None,
-            Err(_) => return Err("Cannot read Windows Credential Manager".into()),
-        };
-        let key = Zeroizing::new(random::<32>()?);
-        let nonce = random::<24>()?;
-        let id = hex::encode(random::<16>()?);
-        let encrypted = seal(&bytes, &key, &nonce)?;
-        let path = generation_path(&id)?;
-        crate::windows_fs::write(&path, &encrypted)?;
-        let p = Pointer {
-            xjaus_vault: 1,
-            current: Generation {
-                id,
-                key: hex::encode(&*key),
-            },
-            previous,
-        };
-        let marker =
-            Zeroizing::new(serde_json::to_vec(&p).map_err(|_| "Cannot encode vault pointer")?);
-        if !fits_single_credential(marker.len()) {
-            let _ = std::fs::remove_file(&path);
-            return Err("Vault pointer too large".into());
-        }
-        if entry()?.set_secret(&marker).is_err() {
-            let _ = std::fs::remove_file(&path);
-            return Err("Cannot commit Windows vault".into());
-        }
-        Ok(())
+}
+
+#[cfg(test)]
+#[path = "logout_barrier_windows.rs"]
+mod logout_barrier_windows;
+pub fn generation() -> Result<u64, String> {
+    Ok(SESSION_GENERATION.load(std::sync::atomic::Ordering::SeqCst))
+}
+pub fn begin_login() -> Result<u64, String> {
+    Ok(SESSION_GENERATION
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        .wrapping_add(1))
+}
+pub fn save_if_generation(
+    _bundle: &TokenBundle,
+    _current: &TokenBundle,
+    expected: u64,
+) -> Result<(), String> {
+    if generation()? != expected {
+        return Err("Session invalidated by logout or another login".into());
     }
-    #[cfg(not(windows))]
-    {
-        let _ = bytes;
-        Err("Windows vault unavailable".into())
+    Ok(())
+}
+pub fn login(_bundle: &TokenBundle, expected: u64) -> Result<(), String> {
+    if generation()? != expected {
+        return Err("Login invalidated by logout".into());
     }
+    Ok(())
+}
+tauri_only! {
+pub fn save(_bundle: &TokenBundle) -> Result<(), String> {
+    Ok(())
 }
 
 pub fn load() -> Result<Option<TokenBundle>, String> {
-    match entry()?.get_secret() {
-        Ok(bytes) => {
-            let bytes = Zeroizing::new(bytes);
-            if let Some(p) = pointer(&bytes)? {
-                #[cfg(windows)]
-                {
-                    return read_generation(&p.current)
-                        .or_else(|error| match p.previous {
-                            Some(previous) => read_generation(&previous),
-                            None => Err(error),
-                        })
-                        .map(Some);
-                }
-                #[cfg(not(windows))]
-                {
-                    let _ = p;
-                    return Err("Windows vault unavailable".into());
-                }
-            }
-            serde_json::from_slice(&bytes)
-                .map(Some)
-                .map_err(|_| "Stored session is invalid".into())
-        }
-        Err(keyring::Error::NoEntry) => {
-            // Transitional overflow format written by older builds: a separate
-            // marker and plaintext DACL-protected file. Read only; next save
-            // migrates into the authenticated per-generation format.
-            #[cfg(windows)]
-            {
-                match overflow_entry()?.get_secret() {
-                    Ok(marker) if marker == b"overflow-file-v1" => {
-                        let path = crate::windows_fs::root("auth")?.join("auth-overflow.enc");
-                        let old = Zeroizing::new(crate::windows_fs::read(&path, MAX_FILE)?);
-                        return serde_json::from_slice(&old)
-                            .map(Some)
-                            .map_err(|_| "Invalid legacy overflow vault".into());
-                    }
-                    Ok(_) | Err(keyring::Error::NoEntry) => (),
-                    Err(_) => return Err("Cannot read legacy overflow marker".into()),
-                }
-            }
-            Ok(None)
-        }
-        Err(_) => Err("Cannot read Windows Credential Manager".into()),
+    Ok(None)
+}
+}
+#[cfg(test)]
+fn load_committed<T>(
+    p: &Pointer,
+    read: impl FnOnce(&Generation) -> Result<T, String>,
+) -> Result<T, String> {
+    read(&p.current)
+}
+
+#[cfg(test)]
+fn delete_with_barrier(
+    barrier_result: Result<(), String>,
+    delete: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let deletion_result = delete();
+    match (barrier_result, deletion_result) {
+        (Ok(()), result) => result,
+        (Err(error), Ok(())) => Err(error),
+        (Err(barrier_error), Err(delete_error)) => Err(format!("{barrier_error}; {delete_error}")),
     }
 }
 
+pub fn invalidate_memory_generation() {
+    SESSION_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+tauri_only! {
 pub fn delete() -> Result<(), String> {
-    // Delete authority before files; partial cleanup cannot resurrect tokens.
-    match entry()?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => (),
-        Err(_) => return Err("Cannot remove session from Windows Credential Manager".into()),
+    invalidate_memory_generation();
+    delete_persistent()
+}
+}
+
+production_or_tauri! {
+pub fn delete_persistent() -> Result<(), String> {
+    let mut errors = Vec::new();
+    if let Err(e) = delete_raw() {
+        errors.push(e);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let path =
+            std::path::PathBuf::from(home).join(".local/share/io.github.xjaus.xjaus/auth.enc");
+        if let Err(e) = std::fs::remove_file(path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            errors.push(format!("Cannot remove legacy auth.enc: {e}"));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn delete_raw() -> Result<(), String> {
+    let mut errors = Vec::new();
+    for (name, result) in [("session", entry()), ("overflow marker", overflow_entry())] {
+        match result.and_then(|entry| match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(format!(
+                "Cannot remove {name} from Windows Credential Manager"
+            )),
+        }) {
+            Ok(()) => (),
+            Err(e) => errors.push(e),
+        }
     }
     #[cfg(windows)]
-    {
-        let dir = crate::windows_fs::root("auth")?;
-        if dir.exists() {
-            for item in std::fs::read_dir(dir).map_err(|_| "Cannot enumerate vault files")? {
-                let item = item.map_err(|_| "Cannot enumerate vault files")?;
-                let name = item.file_name();
-                let name = name.to_string_lossy();
-                if name == "auth-overflow.enc"
-                    || (name.len() == 42
-                        && name.starts_with("vault-")
-                        && name.ends_with(".enc")
-                        && name[6..38].bytes().all(|b| b.is_ascii_hexdigit()))
-                {
-                    std::fs::remove_file(item.path()).map_err(|_| "Cannot remove vault file")?;
+    match crate::windows_fs::root("auth") {
+        Err(e) => errors.push(e),
+        Ok(dir) => match std::fs::read_dir(dir) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+            Err(e) => errors.push(format!("Cannot enumerate vault files: {e}")),
+            Ok(items) => {
+                for item in items {
+                    match item {
+                        Err(e) => errors.push(format!("Cannot enumerate vault files: {e}")),
+                        Ok(item) => {
+                            let name = item.file_name();
+                            let name = name.to_string_lossy();
+                            if (name == "auth-overflow.enc"
+                                || (name.len() == 42
+                                    && name.starts_with("vault-")
+                                    && name.ends_with(".enc")
+                                    && name.as_bytes()[6..38].iter().all(u8::is_ascii_hexdigit)))
+                                && let Err(e) = std::fs::remove_file(item.path())
+                                && e.kind() != std::io::ErrorKind::NotFound
+                            {
+                                errors.push(format!("Cannot remove vault file: {e}"));
+                            }
+                        }
+                    }
                 }
             }
-        }
-        if let Ok(old) = overflow_entry() {
-            match old.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => (),
-                Err(_) => return Err("Cannot remove old overflow marker".into()),
-            }
-        }
+        },
     }
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
 }
 
 #[cfg(test)]
@@ -299,6 +297,60 @@ mod tests {
         wrong["xjaus_vault"] = 1.into();
         wrong["current"]["id"] = "../invalid".into();
         assert!(super::pointer(&serde_json::to_vec(&wrong).unwrap()).is_err());
+    }
+
+    #[test]
+    fn corrupted_current_generation_must_not_restore_previous() {
+        let current = super::Generation {
+            id: "a".repeat(32),
+            key: "11".repeat(32),
+        };
+        let previous = super::Generation {
+            id: "b".repeat(32),
+            key: "22".repeat(32),
+        };
+        let p = super::Pointer {
+            xjaus_vault: 1,
+            current,
+            previous: Some(previous),
+        };
+        let mut damaged = super::seal(b"synthetic current", &[0x11; 32], &[3; 24]).unwrap();
+        *damaged.last_mut().unwrap() ^= 1;
+        let previous_blob = super::seal(b"synthetic previous", &[0x22; 32], &[4; 24]).unwrap();
+        let mut reads = Vec::new();
+        let result = super::load_committed(&p, |generation| {
+            reads.push(generation.id.clone());
+            if generation.id == p.current.id {
+                super::open(&damaged, &[0x11; 32])
+            } else {
+                super::open(&previous_blob, &[0x22; 32])
+            }
+        });
+        assert_eq!(result.unwrap_err(), "Vault authentication failed");
+        assert_eq!(reads, vec![p.current.id.clone()]);
+    }
+
+    #[test]
+    fn delete_attempts_cleanup_when_barrier_fails() {
+        for (barrier, deletion, expected) in [
+            (Err("guard failed"), Ok(()), Err("guard failed")),
+            (Err("block failed"), Ok(()), Err("block failed")),
+            (
+                Err("advance failed"),
+                Err("delete failed"),
+                Err("advance failed; delete failed"),
+            ),
+            (Ok(()), Err("delete failed"), Err("delete failed")),
+            (Ok(()), Ok(()), Ok(())),
+        ] {
+            let mut attempted = false;
+            let result = super::delete_with_barrier(barrier.map_err(str::to_owned), || {
+                attempted = true;
+                deletion.map_err(str::to_owned)
+            });
+            assert!(attempted);
+            assert_eq!(result, expected.map_err(str::to_owned));
+        }
     }
 
     #[test]

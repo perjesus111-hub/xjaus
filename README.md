@@ -1,102 +1,21 @@
 # XJAUS
 
-**Xbox Cloud Gaming and Xbox Remote Play for the Linux gaming community.**
+[Español](README.es.md)
 
-![Platform: Linux](https://img.shields.io/badge/platform-Linux-blue)
-![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)
-![Architecture: Electron and Rust](https://img.shields.io/badge/architecture-Electron%20%2B%20Rust-gold)
-![VA-API flags](https://img.shields.io/badge/video-VA--API%20flags-green)
+XJAUS is an independent desktop client for Xbox Cloud Gaming and Xbox Remote Play. Its controller-oriented interface runs in Electron, with a Rust sidecar for authentication and stream control. Cloud availability depends on Microsoft service eligibility, region and account; Remote Play requires a compatible console configured for remote features.
 
-XJAUS pairs a controller-oriented Electron interface with a Rust sidecar for authentication, streaming control and session management. It supports cloud gaming and streaming from your own Xbox console. An eligible Microsoft account, supported region and network connection are required; cloud access depends on your subscription and the service's current requirements.
+## 1.2.4: source preview, not a release
 
-## Features and practical limits
+- **Targets:** Linux x86-64 (AppImage, RPM, DEB) and Windows x64 (NSIS EXE, MSI). Configured targets are not tested-platform guarantees. No 1.2.4 download or native Windows installer validation is claimed here.
+- **Sign-in:** 1.2.4 does not save or restore the authentication session. Sign in again after restarting; other preferences can persist. Sign-out attempts legacy cleanup, but is not server-side token revocation. See [Privacy](PRIVACY.md) before using or downgrading.
+- **Streaming:** Gamepad navigation, favorites and optional diagnostics are available. Resolution up to 1440p, 15–45 Mbps and codec settings are requests or preferences, not measured outcomes. Hardware decoding depends on the negotiated stream, runtime and driver.
+- **Linux sandbox:** Do not use `--no-sandbox` to work around an unavailable user-namespace check. Differential AppImage updates (`.zsync`) are not part of this release preparation.
 
-- **Hardware video acceleration flags enabled for VA-API on Wayland/X11.** Actual hardware decoding depends on your GPU, drivers, Chromium runtime and negotiated codec. Feature flags alone do not establish hardware decoder use or battery-life improvements.
-- **Configurable stream bitrate requests up to 45 Mbps via dynamic SDP negotiation.** The slider spans 15–45 Mbps. These are requests, not guaranteed delivered bitrates.
-- **Selectable resolution profiles up to 1440p**, with Auto, H.264 and HEVC codec preferences. HEVC is preferred only when offered by the negotiated stream; actual resolution and frame rate depend on the service, hardware and network.
-- **10-foot interface** with gamepad navigation and contextual controller shortcuts. Controller compatibility and advanced rumble features vary by device and transport.
-- **Automatically hidden stream HUD and cursor**, with an optional telemetry overlay.
-- **Idle-work reduction:** controller navigation avoids continuous animation-frame polling when no gamepad is connected. Console presence polling is scoped to the console view and suspended during streaming. This is not a claim of zero CPU usage.
-- **Session lifecycle handling** with a short network-disruption grace period and local teardown that does not wait indefinitely for a remote shutdown request.
-- **Dynamic Home with a daily featured carousel** built from the real, entitled Cloud Gaming catalog (six art-backed titles per day), automatic rotation and full mouse/keyboard/gamepad navigation. The banner dialog offers Play now (reusing the validated cloud connect flow), add/remove favorite and Cancel; it never starts a stream by itself.
-- **Favorites shared across Home and Cloud Gaming** through one library, synchronized immediately in both directions.
-- **Settings organized in six sections** — General, Streaming, Video & audio, Interface, Diagnostics, About — with a persisted Interface-preferences namespace kept separate from streaming settings, and a Diagnostics section whose "Copy technical report" action redacts credential-like values before the report leaves the machine.
-- **Fullscreen/window controls** available with F11, from the dashboard, streaming toolbar and in-game menu. Escape and B continue to close the local menu without disconnecting. Normal geometry and maximized state are restored only when they fit an available display work area; Wayland remains compositor-authoritative for final positioning.
-- **Aspect-ratio-preserving video** via `object-fit: contain`: XJAUS does not stretch or crop a 16:9 stream to promise native ultrawide playback.
+## Source and validation
 
-## Screenshots
+The CI workflow uses Node 24 and separate Cargo manifests for Linux and Windows. Review [Contributing](CONTRIBUTING.md) for source checks and [Architecture](docs/ARCHITECTURE.md) for the platform boundaries. The Linux packaging path is `npm run dist:linux` (Docker); Windows instructions are in [WINDOWS-BUILD.md](WINDOWS-BUILD.md). Packaging is separate from source validation and does not authorize running or distributing its outputs.
 
-Captured from the packaged Electron AppImage on Linux (XJAUS 1.2.0). Account details are redacted in the saved images; no mock account or fabricated stream is shown.
-
-| Home carousel | Featured-title dialog |
-| :---: | :---: |
-| ![Home](docs/screenshots/01_home_carousel.png) | ![Featured dialog](docs/screenshots/02_featured_modal.png) |
-| **Cloud Gaming catalog** | **Console management** |
-| ![Cloud catalog](docs/screenshots/03_cloud_catalog.png) | ![Consoles](docs/screenshots/06_consoles.png) |
-| **Settings — Streaming** | **Settings — Diagnostics** |
-| ![Settings streaming](docs/screenshots/08_settings_streaming.png) | ![Settings diagnostics](docs/screenshots/11_settings_diagnostico.png) |
-
-## Packages
-
-Release packaging targets **AppImage, RPM and DEB for x86-64** on Linux, plus an **NSIS EXE installer and an MSI installer for Windows x64**. Downloads are available from the [XJAUS 1.2.2 GitHub Release](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.2). Do not use older Tauri bundles as substitutes for the Electron release.
-
-### AppImage
-
-For the unreleased 1.2.3 build, the intended filename is `XJAUS-1.2.3-x86_64.AppImage`. It bundles a statically linked type-2 runtime, so mounting it does not require the distribution's libfuse2. On Linux, windowed mode uses the desktop's native title bar, and the interface follows the operating system's light/dark preference (the in-game stream HUD stays dark). AppImageUpdate / `.zsync` support is not currently provided or validated.
-
-```sh
-chmod +x XJAUS-*.AppImage
-./XJAUS-*.AppImage
-```
-
-The bundled AppImage runtime is a static-pie ELF and does not require your distribution's FUSE compatibility package; if a distribution still refuses to mount it, `--appimage-extract-and-run` is an alternative. XJAUS refuses to start when its user-namespace sandbox probe fails or `unshare` is missing, and rejects `--no-sandbox`; check your distribution's sandbox and user-namespace settings instead. This conservative check can also reject systems where another sandbox mechanism might otherwise work. On Linux, verifying the AppImage build requires `7z` with SquashFS support. Use the documented `npm run dist:linux` build path (it delegates to a digest-pinned Debian container and needs Docker): invoking electron-builder directly bypasses XJAUS's launcher hardening and verification.
-
-### Fedora / RPM-based distributions
-
-```sh
-sudo dnf install ./XJAUS-*.rpm
-```
-
-### Debian / Ubuntu
-
-```sh
-sudo apt install ./XJAUS-*.deb
-```
-
-### Windows (x64)
-
-The Windows build produces both an **NSIS EXE** and an **MSI** installer:
-
-- `XJAUS-*-win-x64-setup.exe` — NSIS bootstrap (32-bit); installs the x64 application.
-- `XJAUS-*-win-x64-setup.msi` — per-user MSI package.
-
-Both bundle the Rust sidecar, so no separate backend download is required. The Windows installers are unsigned and were smoke-tested under Wine only; they have not been verified on native Windows. Do not treat them as natively validated Windows installers.
-
-Launch XJAUS from your application menu after installation. Packaging support is not certification that every Linux distribution or SteamOS version has been tested.
-
-## Build from source
-
-Install Node.js/npm, Rust and your distribution's native development prerequisites. The retained Rust project includes Tauri dependencies, so Linux builds also need GTK/WebKitGTK development libraries even though the distributed interface uses Electron.
-
-```sh
-npm ci
-npm test
-npm run dist:linux
-```
-
-The renderer build is kept in `dist/`; Linux installers are written separately to `release/linux/` to avoid overwriting renderer assets. Keep `src-tauri/Cargo.lock` under version control for reproducible application builds.
-
-## Reporting issues
-
-Include your distribution, desktop session (Wayland or X11), GPU/driver, package version, controller model and whether the problem affects cloud gaming or Remote Play. Distinguish a selected profile from actual received video dimensions and decoder statistics. Never attach access tokens, account caches or unredacted authentication logs.
-
-### Support Ongoing Development
-
-XJAUS is free, open-source software built for the Linux gaming community. If you enjoy the project and want to support continued updates, bug fixes, and feature additions, contributions are welcome:
-
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=for-the-badge&logo=paypal)](https://paypal.me/Comicoon)
-
-Donations are voluntary and do not purchase Microsoft services, subscription access or guaranteed support.
+[Changelog](CHANGELOG.md) · [Security reports](SECURITY.md) · [Rollback](docs/ROLLBACK.md)
 
 ## License and acknowledgments
 

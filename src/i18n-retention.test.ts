@@ -2,9 +2,7 @@ import {it,expect} from 'vitest';
 import ts from 'typescript';
 import source from './i18n.ts?raw';
 import dictionary from './i18n-dictionary.ts?raw';
-// @ts-expect-error Node is test-only, not a renderer dependency.
 import {execFileSync} from 'node:child_process';
-// @ts-expect-error Node is test-only, not a renderer dependency.
 import process from 'node:process';
 it('locale registry does not retain detached targets through a self-capturing render callback',()=>{
  const compile=(code:string)=>ts.transpileModule(code,{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2021}}).outputText;

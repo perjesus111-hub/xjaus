@@ -51,6 +51,11 @@ let sequence = 0;
 const disposeNativeTheme = bindNativeTheme(nativeTheme, () => window);
 let stdoutBuffer = '';
 let stderrBuffer = '';
+let sidecarShutdownResult = null;
+let sidecarClosed = false;
+// Settling a local promise does not establish delivery. Keep this evidence
+// for the lifetime of the sidecar, even if pending empties or a reply arrives late.
+let sidecarIpcIncomplete = false;
 const pending = new Map();
 const authIpcTimeouts = new Map([['begin_login_window', 20_000], ['poll_login', 90_000], ['cancel_login', 8_000]]);
 function logAuthIpc(command, stage, id, startedAt, category) {
@@ -68,9 +73,19 @@ function stopPending(reason) {
   pending.clear();
 }
 function startBackend() {
-  backend = spawn(backendPath, [], { stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true });
-  backend.on('error', () => stopPending('Rust backend failed to start'));
-  backend.on('close', () => stopPending('El backend Rust se cerró'));
+  backend = spawn(backendPath, ['--shutdown-report'], { stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true });
+  backend.on('error', () => {
+    sidecarIpcIncomplete = true;
+    stopPending('Rust backend failed to start');
+  });
+  backend.stdin?.on?.('error', () => {
+    sidecarIpcIncomplete = true;
+    stopPending('Backend IPC write failed');
+  });
+  backend.on('close', () => {
+    sidecarClosed = true;
+    if (!quitting) stopPending('El backend Rust se cerró');
+  });
   backend.stdout.on('data', (chunk) => {
     stdoutBuffer += chunk.toString('utf8');
     if (stdoutBuffer.length > 4_000_000) { backend.kill(); return; }
@@ -79,6 +94,11 @@ function startBackend() {
       stdoutBuffer = stdoutBuffer.slice(index + 1);
       let reply;
       try { reply = JSON.parse(line); } catch { continue; }
+      if (reply?.id === undefined && ['drained', 'cleanup_uncertain', 'cleanup_timeout', 'ipc_incomplete'].includes(reply?.shutdown)) {
+        sidecarShutdownResult = reply.shutdown;
+        continue;
+      }
+      if (!reply) continue;
       const item = pending.get(reply.id);
       if (!item) continue;
       if (typeof reply.error === 'string') item.reject(new Error(reply.error));
@@ -99,6 +119,36 @@ function authorize(event) {
   return event.sender === window?.webContents && event.senderFrame === event.senderFrame?.top
     && trustedFrame(event.senderFrame.url, window.webContents.getURL(), frontend);
 }
+// IPC admission control: no ordinary write queue, one reserved logout slot.
+let quitting = false;
+let quitComplete = false;
+const IPC_MAX_PENDING = 64;
+const IPC_MAX_PENDING_BYTES = 4_000_000;
+let ipcPendingBytes = 0;
+let ipcBlocked = false;
+let ipcLogout = null;
+let ipcLogoutPending = false;
+function writeIpc(item) {
+  const deliveryFailed = () => {
+    sidecarIpcIncomplete = true;
+    item.reject(new Error('Backend IPC write failed'));
+  };
+  try {
+    if (!backend.stdin.write(item.message + '\n', error => {
+      if (error) deliveryFailed();
+    })) {
+      ipcBlocked = true;
+      backend.stdin.once('drain', () => {
+        ipcBlocked = false;
+        const next = ipcLogout;
+        ipcLogout = null;
+        if (next) writeIpc(next);
+      });
+    }
+  } catch {
+    deliveryFailed();
+  }
+}
 ipcMain.handle('xjaus:invoke', (event, command, args) => {
   if (!authorize(event) || !allowedCommand(command)) throw new Error('Comando IPC no permitido');
   if (command === 'app_exit') {
@@ -106,11 +156,17 @@ ipcMain.handle('xjaus:invoke', (event, command, args) => {
     app.quit();
     return null;
   }
+  if (quitting) throw new Error('El backend Rust se está cerrando');
   const id = ++sequence;
   const startedAt = Date.now();
   const message = JSON.stringify({ id, cmd: command, args: args ?? {} });
-  if (message.length > 2_000_000) throw new Error('Petición IPC demasiado grande');
+  const bytes = Buffer.byteLength(message, 'utf8');
+  if (bytes > 2_000_000) throw new Error('Petición IPC demasiado grande');
   if (!backend || backend.exitCode !== null || !backend.stdin.writable) throw new Error('Backend Rust no disponible');
+  const isLogout = command === 'logout';
+  if (isLogout ? ipcLogoutPending : (ipcBlocked || pending.size - Number(ipcLogoutPending) >= IPC_MAX_PENDING || ipcPendingBytes + bytes > IPC_MAX_PENDING_BYTES)) {
+    throw new Error('Backend IPC saturado');
+  }
   if (command === 'start_stream') {
     window.show();
     window.focus();
@@ -125,6 +181,8 @@ ipcMain.handle('xjaus:invoke', (event, command, args) => {
       settled = true;
       if (timer) clearTimeout(timer);
       pending.delete(id);
+      if (isLogout) { ipcLogoutPending = false; if (ipcLogout === item) ipcLogout = null; }
+      else ipcPendingBytes -= bytes;
       if (isAuth) logAuthIpc(command, fn === resolve ? 'response_received' : 'request_failed', id, startedAt, category);
       fn(value);
     };
@@ -133,18 +191,23 @@ ipcMain.handle('xjaus:invoke', (event, command, args) => {
       reject: error => finish(reject, error, error?.name === 'TimeoutError' ? 'timeout' : 'backend_error'),
     };
     pending.set(id, item);
-    const timeoutMs = authIpcTimeouts.get(command);
+    if (isLogout) ipcLogoutPending = true;
+    else ipcPendingBytes += bytes;
+    item.message = message;
+    const timeoutMs = authIpcTimeouts.get(command) ?? (isLogout ? 20_000 : undefined);
     if (timeoutMs) {
-      logAuthIpc(command, 'request_sent', id, startedAt);
+      if (isAuth) logAuthIpc(command, 'request_sent', id, startedAt);
       timer = setTimeout(() => {
-        const error = new Error('Microsoft sign-in request timed out');
+        sidecarIpcIncomplete = true;
+        const error = new Error(isLogout
+          ? (ipcLogout === item ? 'Logout timed out before being sent' : 'Logout timed out; backend outcome is unknown')
+          : 'Microsoft sign-in request timed out');
         error.name = 'TimeoutError';
         item.reject(error);
       }, timeoutMs);
     }
-    backend.stdin.write(`${message}${String.fromCharCode(10)}`, error => {
-      if (error) item.reject(new Error('Backend IPC write failed'));
-    });
+    if (ipcBlocked) ipcLogout = item;
+    else writeIpc(item);
   });
 });
 ipcMain.handle('xjaus:fullscreen', (event, action) => {
@@ -199,7 +262,48 @@ app.whenReady().then(() => {
   window.loadFile(frontend);
 });
 app.on('window-all-closed', () => { app.quit(); });
-app.on('before-quit', () => {
+app.on('before-quit', event => {
+  if (quitComplete) return;
+  if (quitting) { event.preventDefault(); return; }
+  quitting = true;
   disposeNativeTheme();
-  if (backend && backend.exitCode === null) { backend.stdin.end(); backend.kill(); }
+  if (!backend) { quitComplete = true; return; }
+  const child = backend;
+  const report = status => console[status === 'drained' ? 'info' : 'warn']('[XJAUS shutdown]', { status });
+  if (sidecarClosed) {
+    quitComplete = true;
+    report('child_closed_unknown');
+    return;
+  }
+  event.preventDefault();
+  const finish = status => {
+    if (quitComplete) return;
+    clearTimeout(deadline);
+    child.removeListener('close', onClose);
+    child.stdin.removeListener('drain', endInput);
+    quitComplete = true;
+    stopPending('El backend Rust se cerró; resultado de peticiones pendientes desconocido');
+    report(status);
+    app.quit();
+  };
+  const endInput = () => {
+    try {
+      if (child.stdin.writable) child.stdin.end();
+      else sidecarIpcIncomplete = true;
+    } catch {
+      sidecarIpcIncomplete = true;
+    }
+  };
+  const onClose = (code, signal) => {
+    if (code !== 0 || signal || !sidecarShutdownResult) finish('child_closed_unknown');
+    else if (sidecarShutdownResult === 'drained' && (pending.size || sidecarIpcIncomplete)) finish('ipc_incomplete');
+    else finish(sidecarShutdownResult);
+  };
+  const deadline = setTimeout(() => {
+    try { child.kill('SIGKILL'); } finally { finish('timeout_unknown'); }
+  }, 9_000);
+  child.once('close', onClose);
+  // writeIpc registered first: on drain it writes the reserved logout before EOF.
+  if (ipcLogout) child.stdin.once('drain', endInput);
+  else endInput();
 });

@@ -754,7 +754,6 @@ pub enum AuthError {
     InvalidResponse,
     InvalidVerificationUri,
     Denied,
-    InvalidState,
     Serialization,
     Pending,
     SlowDown,
@@ -779,10 +778,6 @@ impl std::fmt::Display for AuthError {
             Self::InvalidResponse => write!(f, "invalid_device_code_response"),
             Self::InvalidVerificationUri => write!(f, "invalid_verification_uri"),
             Self::Denied => write!(f, "authorization_declined"),
-            Self::InvalidState => write!(
-                f,
-                "Estado de autenticación inválido; reinicia el inicio de sesión"
-            ),
             Self::Serialization => write!(f, "No se pudo parsear la respuesta de autenticación"),
             Self::Pending => write!(f, "Waiting for user"),
             Self::SlowDown => write!(f, "slow_down"),
