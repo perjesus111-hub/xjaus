@@ -130,7 +130,7 @@ test('only an authorized start_stream focuses the player window and renderer', (
   const backend={on:()=>{},stdout:{on:()=>{}},stderr:{on:()=>{}},exitCode:null,stdin:{writable:true,write:()=>true}};
   const app={getPath:()=>'/isolated-app-data',setPath:()=>{},setName:()=>{},setAppUserModelId:()=>{},setDesktopName:()=>{},getAppPath:()=>'/app',commandLine:{appendSwitch:()=>{}},whenReady:()=>({then:fn=>fn()}),on:()=>{},quit:()=>quits++};
   runInNewContext(readFileSync(require.resolve('./main.cjs'),'utf8'),{
-    process,Buffer,require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},nativeTheme:nativeThemeStub(),ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:name==='./security.cjs'?{allowedCommand,externalLoginUrl,trustedFrame:(frame)=>frame===url}:require(name),__dirname:'/app/electron'});
+    process,Buffer,setTimeout:()=>1,clearTimeout:()=>{},require:name=>name==='electron'?{app,BrowserWindow:function(){return win;},nativeTheme:nativeThemeStub(),ipcMain:{handle:(key,fn)=>handlers.set(key,fn)},session:{defaultSession:{setPermissionRequestHandler:()=>{}}}}:name==='node:child_process'?{spawn:()=>backend}:name==='./security.cjs'?{allowedCommand,externalLoginUrl,trustedFrame:(frame)=>frame===url}:require(name),__dirname:'/app/electron'});
   const frame={url};frame.top=frame;
   const event={sender:wc,senderFrame:frame};
   assert.throws(()=>handlers.get('xjaus:invoke')({...event,sender:{}},'start_stream',{}));

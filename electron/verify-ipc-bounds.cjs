@@ -190,3 +190,53 @@ test('synchronous EOF delivery failure prevents drained without throwing from qu
   h.backend.emit('close', 0, null);
   assert.deepEqual(h.outcomes.map(([, result]) => result.status), ['ipc_incomplete']);
 });
+
+test('an exact cancellation bypasses the ordinary pending count and byte budgets', async () => {
+  const h = harness();
+  const calls = [h.invoke('save_settings', { text: 'x'.repeat(1_700_000) }), h.invoke('save_settings', { text: 'x'.repeat(1_700_000) })];
+  assert.throws(() => h.invoke('save_settings', { text: 'x'.repeat(1_000_000) }), /saturad/i);
+  for (let i = 2; i < 64; i++) calls.push(h.invoke('load_settings'));
+  assert.throws(() => h.invoke('load_settings'), /saturad/i);
+  const args = { attemptId: 'ordinary-attempt', generation: 'backend-generation' };
+  calls.push(h.invoke('cancel_connection', args));
+  assert.deepEqual(JSON.parse(h.stdin.writes.at(-1)).args, args);
+  calls.push(h.invoke('logout'));
+  for (const item of h.context.pending.values()) item.resolve(null);
+  await Promise.all(calls);
+});
+
+test('bounded cancellation queue retains exact handles across repeated drain and quit', async () => {
+  const h = harness(); h.stdin.block = true;
+  const calls = [h.invoke('load_settings')];
+  const handles = Array.from({ length: 8 }, (_, i) => ({ attemptId: `attempt-${i}`, generation: `generation-${i}` }));
+  calls.push(...handles.map(args => h.invoke('cancel_connection', args)));
+  assert.throws(() => h.invoke('cancel_connection', { attemptId: 'another-attempt', generation: 'another-generation' }), /saturad/i);
+  calls.push(h.invoke('logout'));
+  assert.equal(h.stdin.writes.length, 1);
+  assert.equal(h.quit(), true);
+  h.stdin.emit('drain'); // logout write itself produces backpressure
+  assert.equal(JSON.parse(h.stdin.writes[1]).cmd, 'logout');
+  assert.equal(h.stdin.ended, undefined);
+  h.stdin.emit('drain'); // first cancellation also re-blocks the pipe
+  assert.equal(h.stdin.writes.length, 3);
+  assert.equal(h.stdin.ended, undefined);
+  h.stdin.block = false; h.stdin.emit('drain');
+  assert.deepEqual(h.stdin.writes.slice(2).map(line => JSON.parse(line).args), handles);
+  assert.equal(h.stdin.ended, true);
+  for (const item of h.context.pending.values()) item.resolve(null);
+  h.backend.stdout.emit('data', Buffer.from('{"shutdown":"drained"}\n'));
+  h.backend.emit('close', 0, null);
+  await Promise.all(calls);
+  assert.equal(h.outcomes[0][1].status, 'drained');
+});
+
+test('auth_status has a bounded wait and releases its ordinary capacity', async () => {
+  let timer;
+  const h = harness({ setTimeout: (fn, ms) => { timer = fn; assert.equal(ms, 5000); return 1; }, clearTimeout: () => {} });
+  const status = h.invoke('auth_status');
+  timer();
+  await assert.rejects(status, /status request timed out/i);
+  assert.equal(h.context.pending.size, 0);
+  h.backend.stdout.emit('data', Buffer.from('{"id":1,"result":{"authenticated":false}}\n'));
+  assert.equal(h.context.pending.size, 0);
+});

@@ -101,8 +101,9 @@ let catalogSearchPending = false;
 let cleanupLoginCode: (() => void) | undefined;
 let loginFlow: ReturnType<typeof createDeviceLoginFlow> | undefined;
 let authInteractionGeneration = 0;
+let logoutPending = false;
 function disposeLoginCode(): void { cleanupLoginCode?.(); cleanupLoginCode = undefined; }
-window.addEventListener('pagehide',()=>{loginFlow?.dispose(); disposeLoginCode();});
+window.addEventListener('pagehide',()=>{authInteractionGeneration++; loginFlow?.dispose(); disposeLoginCode();});
 let activeTab: Tab = "consoles";
 let loadingCatalog = false;
 let starting = false;
@@ -780,7 +781,10 @@ function renderLoginFlowState(state: DeviceLoginState): void {
   if (state.kind === 'requesting') { bindText(loginFeedback, () => t('requestingCode')); return; }
   if (state.kind === 'authorized') {
     bindText(loginFeedback, () => t('loginAuthorized'));
-    window.setTimeout(() => { if (loginFlow?.state.kind === 'authorized') showAuth(state.status); }, 250);
+    const generation = authInteractionGeneration;
+    window.setTimeout(() => {
+      if (generation === authInteractionGeneration && loginFlow?.state === state) showAuth(state.status);
+    }, 250);
     return;
   }
   if (state.kind === 'code-available' || state.kind === 'waiting') {
@@ -849,6 +853,7 @@ loginFlow = createDeviceLoginFlow({
 }, renderLoginFlowState);
 
 get<HTMLButtonElement>('btn-login').addEventListener('click', () => {
+  if (logoutPending) return;
   authInteractionGeneration++;
   void loginFlow?.start();
 });
@@ -887,26 +892,47 @@ const profilePanel = profileSlot
         }
         return profile;
       },
-      onLogout: async () => {
-        try {
-          await invoke<unknown>("logout");
-          showAuth({ authenticated: false, account: "", storage: "" });
-        } catch (error) {
-          // A cleanup error can arrive after the backend has already discarded
-          // its in-memory session. A transport error alone proves neither state.
-          try {
-            const status = await invoke<Status>('auth_status');
-            if (status.authenticated === false) {
-              showAuth(status);
-              notice(() => t('signOutCleanupWarning'));
-              return;
-            }
-          } catch { /* State is unknown; do not claim logout succeeded. */ }
-          notice(() => t('signOutFailed',{error:errorText(error)}));
-        }
-      },
+      onLogout: logout,
     })
   : undefined;
+async function logout(): Promise<void> {
+  if (logoutPending) return;
+  logoutPending = true;
+  const generation = ++authInteractionGeneration;
+  const confirm = (status: Status) => {
+    loginFlow?.resetAfterLogout();
+    showAuth(status);
+  };
+  try {
+    try {
+      await invoke<unknown>('logout');
+    } catch (error) {
+      if (generation !== authInteractionGeneration) return;
+      // A cleanup error may follow in-memory invalidation, but a transport
+      // error proves neither state. Make one bounded read, never retry logout.
+      let timer: number | undefined;
+      let status: Status | undefined;
+      try {
+        status = await Promise.race([
+          invoke<Status>('auth_status'),
+          new Promise<undefined>(resolve => { timer = window.setTimeout(resolve, 5_000); }),
+        ]);
+      } catch { /* Unknown state. */ }
+      finally { window.clearTimeout(timer); }
+      if (generation !== authInteractionGeneration) return;
+      if (status?.authenticated === false) {
+        confirm(status);
+        notice(() => t('signOutCleanupWarning'));
+      } else {
+        notice(() => t('signOutFailed',{error:errorText(error)}));
+      }
+      return;
+    }
+    if (generation === authInteractionGeneration) confirm({ authenticated: false, account: '', storage: '' });
+  } finally {
+    logoutPending = false;
+  }
+}
 async function refreshProfile(): Promise<void> {
   if (!profilePanel || !settingsProfileVisible()) return;
   await profilePanel.refresh();
