@@ -3500,12 +3500,27 @@ while True:
     #[test]
     fn logout_profile_failure_invalidates_sidecar_auth() {
         tauri::async_runtime::block_on(async {
+            // Use a path that fails on both Linux and Windows.
+            // Linux: /dev/null is a character device, not a directory.
+            // Windows: NUL is a reserved device name; creating a directory named NUL fails.
+            #[cfg(windows)]
+            let bad_path = std::path::PathBuf::from("NUL");
+            #[cfg(not(windows))]
+            let bad_path = std::path::PathBuf::from("/dev/null/unavailable");
             let mut backend = Backend {
-                client: Client::new(), primary: Arc::new(AuthSlot::new(PrimaryAuth { tokens: Some(Arc::new(serde_json::from_value(json!({"refresh_token":"fixture", "acquired_at_unix":0, "web_token":{"DisplayClaims":{"xui":[{"uhs":"fixture"}]}}})).unwrap())), pending: None })), stream_owner: Some("active".into()), stream: None,
-                profile_cache: profile::ProfileCache::persistent(Default::default(), "/dev/null/unavailable".into()),
+                client: Client::new(),
+                primary: Arc::new(AuthSlot::new(PrimaryAuth {
+                    tokens: Some(Arc::new(
+                        serde_json::from_value(json!({"refresh_token":"fixture", "acquired_at_unix":0, "web_token":{"DisplayClaims":{"xui":[{"uhs":"fixture"}]}}})).unwrap()
+                    )),
+                    pending: None,
+                })),
+                stream_owner: Some("active".into()),
+                stream: None,
+                profile_cache: profile::ProfileCache::persistent(Default::default(), bad_path),
                 logout_guards: Vec::new(),
                 auth_gate: Arc::new(auth_gate::AuthGate::new()),
-            cleanup: Arc::new(CleanupTracker::default()),
+                cleanup: Arc::new(CleanupTracker::default()),
             };
             let epoch = backend.auth_gate.capture().unwrap();
             let deleted = std::cell::Cell::new(false);
