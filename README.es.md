@@ -4,17 +4,95 @@
 
 Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. Electron ofrece una interfaz orientada al mando y un proceso auxiliar Rust gestiona la autenticación y el control de la transmisión. El juego en la nube depende de la elegibilidad de la cuenta, la región y el servicio; Remote Play requiere una consola compatible con las funciones remotas habilitadas.
 
-## 1.2.4: código en preparación, no publicado
+## Navegación
 
-- **Destinos de empaquetado:** Linux x86-64 (AppImage, RPM, DEB) y Windows x64 (EXE NSIS, MSI). No equivalen a compatibilidad probada ni certifican una instalación en Windows nativo.
-- **Sesión:** la autenticación no se guarda ni se restaura; inicia sesión tras reiniciar. Otras preferencias pueden persistir. Cerrar sesión intenta limpiar credenciales antiguas, pero no revoca tokens en Microsoft. Consulta [Privacidad](PRIVACY.md).
-- **Transmisión:** navegación con mando, favoritos y diagnóstico opcional. Hasta 1440p, 15–45 Mbps y selección de códec son preferencias, no garantías. La decodificación depende de la transmisión, los controladores y el entorno.
-- **Linux:** no desactives el aislamiento con `--no-sandbox`. Las actualizaciones diferenciales de AppImage (`.zsync`) quedan fuera de esta preparación.
+- [Estado 1.2.4](#estado-124)
+- [Publicaciones y descargas](#publicaciones-y-descargas)
+- [Matriz de plataformas](#matriz-de-plataformas)
+- [Código y validación](#código-y-validación)
+- [CI y controles](#ci-y-controles)
+- [Soporte y contribución](#soporte-y-contribución)
+- [Licencia y créditos](#licencia-y-créditos)
+- [Descargo de responsabilidad](#descargo-de-responsabilidad)
+
+## Estado 1.2.4
+
+- **Estado:** Preparación de fuente para v1.2.4 (PR #12, rama `private/xjaus-1.2.4`, commit `ed1b6b0`). No es una publicación.
+- **Destinos:** Linux x86-64 (AppImage, RPM, DEB) y Windows x64 (EXE NSIS, MSI). Los destinos configurados no son garantías de plataforma probada.
+- **Autenticación:** Solo en memoria; reiniciar requiere inicio de sesión interactivo. Cerrar sesión invalida la autenticación local e intenta limpieza de credenciales antiguas sin afirmar revocación en servidor. Ver [Privacidad](PRIVACY.md).
+- **Transmisión:** Navegación con mando, favoritos, diagnóstico opcional. Hasta 1440p, 15–45 Mbps y preferencias de códec son peticiones, no resultados medidos. La decodificación de hardware depende de la transmisión negociada, el entorno y el controlador.
+- **Sandbox Linux:** No uses `--no-sandbox` para evadir una comprobación de user-namespace no disponible. Las actualizaciones diferenciales de AppImage (`.zsync`) están deshabilitadas para distribución.
+
+## Publicaciones y descargas
+
+### Última versión publicada: v1.2.3 (preparación sin publicar)
+
+- Linux AppImage: `XJAUS-1.2.3-x86_64.AppImage` (runtime type-2 estático, sin requerir `libfuse2` para montar)
+- Linux RPM: `XJAUS-1.2.3-linux-x86_64.rpm`
+- Linux DEB: `XJAUS-1.2.3-linux-amd64.deb`
+- Windows: No publicado
+- **Verificación:** Artefactos Linux recompilados localmente dentro del contenedor Debian trixie fijado por digest el 2026-11-14 (SHA-256 en `release/linux/SHA256SUMS`). Sin firmar, no aprobados para publicación. Ver [CHANGELOG](CHANGELOG.md#123---historical-unreleased-preparation).
+
+### Candidata v1.2.4 (este PR)
+
+- No hay artefactos de descarga publicados. Este PR prepara solo la fuente.
+- Empaquetado Linux: `npm run dist:linux` (Docker, Debian trixie fijado `node:24.22.3-trixie-slim@sha256:af02d57b...`, Rust 1.96.0).
+- Empaquetado Windows: ver [WINDOWS-BUILD.md](WINDOWS-BUILD.md). QA nativo Windows no realizado; sin firma.
+
+### v1.2.1 (última publicada)
+
+- [GitHub Release v1.2.1](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1)
+- Informe de validación: `docs/validation-1.2.1.md`
+- Notas de publicación: `docs/release-notes-1.2.1.md`
+
+## Matriz de plataformas
+
+| Plataforma | Artefactos | Build verificado en CI | QA nativo | Firmado | Notas |
+|------------|------------|------------------------|-----------|---------|-------|
+| Linux x86-64 | AppImage, RPM, DEB | ✅ Sí (ed1b6b0) | ✅ Montaje FUSE, instal. RPM/DEB verif. en contenedor | ❌ No | Runtime AppImage type-2 estático; sandbox obligatorio; sin `.zsync` |
+| Windows x64 | EXE NSIS, MSI | ✅ Build y tests fuente | ❌ No (solo Wine smoke-test) | ❌ No | Manifiesto Cargo separado (`backend-windows`); sin validación de instalador nativo |
+
+**Estado honesto:** Linux FUSE/DEB/RPM build y verificación pasaron en commit `ed1b6b0` (CI run 44950533288). Instaladores Windows NSIS/MSI compilan y pasan tests de fuente pero **no tienen QA nativo Windows ni firma**. No afirmar validación nativa Windows.
 
 ## Código y validación
 
-CI utiliza Node 24 y manifiestos Cargo distintos para Linux y Windows. Consulta [Contribución](CONTRIBUTING.md), [Arquitectura](docs/ARCHITECTURE.md), [compilación de Windows](WINDOWS-BUILD.md) y [reversión](docs/ROLLBACK.md). `npm run dist:linux` utiliza Docker y no forma parte de la validación estática. Empaquetar no autoriza ejecutar ni distribuir el resultado.
+- CI workflow: [.github/workflows/validation.yml](.github/workflows/validation.yml) — Node 24, manifiestos Cargo separados para Linux (`src-tauri`) y Windows (`backend-windows`).
+- Comprobaciones de fuente: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Límites de arquitectura: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Empaquetado Linux: `npm run dist:linux` (Docker, no parte de validación estática)
+- Instrucciones build Windows: [WINDOWS-BUILD.md](WINDOWS-BUILD.md)
+- Procedimiento reversión: [docs/ROLLBACK.md](docs/ROLLBACK.md)
 
-[Historial](CHANGELOG.md) · [Informes de seguridad](SECURITY.md) · [Licencia GPL-3.0](LICENSE)
+Empaquetar es separado de la validación de fuente y no autoriza ejecutar ni distribuir sus resultados.
 
-Basado en el trabajo de Greenlight; véanse los [créditos y avisos](README.md#license-and-acknowledgments). Proyecto no afiliado ni respaldado por Microsoft o Xbox.
+## CI y controles
+
+| Control | Linux (ubuntu-24.04) | Windows (windows-2025) |
+|---------|---------------------|------------------------|
+| Metadatos de versión | ✅ | ✅ |
+| Tests frontend (Vitest 337) | ✅ | ✅ |
+| Tests Electron (56) | ✅ | ✅ |
+| Backend Linux (Rust) | ✅ | — |
+| Backend Windows (Rust) | — | ✅ |
+| Simulación empaquetado | ✅ (sintética) | — |
+| Simulación release | ✅ (sintética) | — |
+
+**Última ejecución CI:** [44950533288](https://github.com/perjesus111-hub/xjaus/actions/runs/44950533288) — los 4 jobs PASAN.
+
+## Soporte y contribución
+
+- **Issues:** Incluir distribución, sesión de escritorio (Wayland/X11), GPU/controlador, versión de paquete, modelo de mando, y si el problema afecta a cloud gaming o Remote Play. Distinguir perfil seleccionado de dimensiones de video reales y estadísticas de decodificador. Nunca adjuntar tokens de acceso, cachés de cuenta o logs de autenticación sin redactar.
+- **Seguridad:** Ver [SECURITY.md](SECURITY.md) para divulgación responsable.
+- **Contribución:** Comprobaciones de fuente y flujo en [CONTRIBUTING.md](CONTRIBUTING.md). PRs contra `main`; bumps de versión siguen el proceso de preparación de release.
+
+## Licencia y créditos
+
+XJAUS se distribuye bajo la Licencia Pública General de GNU versión 3. Ver [LICENSE](LICENSE). Preservar avisos de copyright y licencia upstream al redistribuir o modificar el proyecto.
+
+Investigación de protocolo e implementación referencia a xal-node (incluyendo su flujo Device Code en msal.ts), xbox-xcloud-player y proyectos OpenXbox. Las dependencias de terceros conservan sus propias licencias. Nombres Microsoft/Xbox, arte de juegos e imágenes de consolas no son relicenciados bajo la GPL por este repositorio; los permisos de redistribución de assets visuales incluidos deben revisarse antes de una publicación pública.
+
+Basado en la arquitectura y comportamiento de autenticación original de los contribuyentes de Greenlight, licenciados bajo GPL-3.0.
+
+## Descargo de responsabilidad
+
+XJAUS es un proyecto de código abierto independiente y no está afiliado, patrocinado ni respaldado por Microsoft o Xbox.
