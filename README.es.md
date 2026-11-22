@@ -25,13 +25,17 @@ Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. E
 
 ## Publicaciones y descargas
 
-### Última versión publicada: v1.2.3 (preparación sin publicar)
+### Última versión publicada: v1.2.3
 
-- Linux AppImage: `XJAUS-1.2.3-x86_64.AppImage` (runtime type-2 estático, sin requerir `libfuse2` para montar)
-- Linux RPM: `XJAUS-1.2.3-linux-x86_64.rpm`
-- Linux DEB: `XJAUS-1.2.3-linux-amd64.deb`
-- Windows: No publicado
-- **Verificación:** Artefactos Linux recompilados localmente dentro del contenedor Debian trixie fijado por digest el 2026-11-14 (SHA-256 en `release/linux/SHA256SUMS`). Sin firmar, no aprobados para publicación. Ver [CHANGELOG](CHANGELOG.md#123---historical-unreleased-preparation).
+- **GitHub Release:** [v1.2.3](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.3) (2026-11-15)
+- **Artefactos (Linux x86-64):**
+  - AppImage: [`XJAUS-1.2.3-x86_64.AppImage`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-x86_64.AppImage) (sha256: `45d9e25a3710856ad283b612649ffca67fe4acc1c5b53cfd4f815359a3a3f814`)
+  - RPM: [`XJAUS-1.2.3-linux-x86_64.rpm`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-linux-x86_64.rpm) (sha256: `1c7332f11feca9697565870e01647d495ed3a350139a625b4ed83f1124bfe777`)
+  - DEB: [`XJAUS-1.2.3-linux-amd64.deb`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-linux-amd64.deb) (sha256: `9fd72c64e38390973a0541126fd9c4fa9facfe48c352d77c82d3bd34a555bae7`)
+  - AppImage `.zsync`: [`XJAUS-1.2.3-x86_64.AppImage.zsync`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-x86_64.AppImage.zsync) (experimental, sin firmar)
+  - Sumas: [`SHA256SUMS`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/SHA256SUMS)
+- **Windows:** No incluida en esta release.
+- **Notas:** Runtime AppImage type-2 estático (sin requerir `libfuse2`), tema del sistema, cadena `.zsync` experimental. Ver cuerpo de la release para detalles.
 
 ### Candidata v1.2.4 (este PR)
 
@@ -39,7 +43,7 @@ Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. E
 - Empaquetado Linux: `npm run dist:linux` (Docker, Debian trixie fijado `node:24.22.3-trixie-slim@sha256:af02d57b...`, Rust 1.96.0).
 - Empaquetado Windows: ver [WINDOWS-BUILD.md](WINDOWS-BUILD.md). QA nativo Windows no realizado; sin firma.
 
-### v1.2.1 (última publicada)
+### Histórica: v1.2.1
 
 - [GitHub Release v1.2.1](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1)
 - Informe de validación: `docs/validation-1.2.1.md`
@@ -47,19 +51,19 @@ Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. E
 
 ## Matriz de plataformas
 
-| Plataforma | Artefactos | Build verificado en CI | QA nativo | Firmado | Notas |
-|------------|------------|------------------------|-----------|---------|-------|
-| Linux x86-64 | AppImage, RPM, DEB | ✅ Sí (ed1b6b0) | ✅ Montaje FUSE, instal. RPM/DEB verif. en contenedor | ❌ No | Runtime AppImage type-2 estático; sandbox obligatorio; sin `.zsync` |
+| Plataforma | Artefactos | Build verificado en CI | QA local (este PR) | Firmado | Notas |
+|------------|------------|------------------------|---------------------|---------|-------|
+| Linux x86-64 | AppImage, RPM, DEB | ✅ Sí (ed1b6b0) | ✅ Montaje FUSE directo + instalación y arranque DEB/RPM en VMs QEMU (Debian/Fedora) — [evidencia](/var/tmp/xjaus-guest.vPJhhj/evidence.txt) | ❌ No | Runtime AppImage type-2 estático; sandbox obligatorio; sin `.zsync` |
 | Windows x64 | EXE NSIS, MSI | ✅ Build y tests fuente | ❌ No (solo Wine smoke-test) | ❌ No | Manifiesto Cargo separado (`backend-windows`); sin validación de instalador nativo |
 
-**Estado honesto:** Linux FUSE/DEB/RPM build y verificación pasaron en commit `ed1b6b0` (CI run 44950533288). Instaladores Windows NSIS/MSI compilan y pasan tests de fuente pero **no tienen QA nativo Windows ni firma**. No afirmar validación nativa Windows.
+**Estado honesto:** Linux FUSE/DEB/RPM build pasó CI en commit `ed1b6b0` (CI run 44950533288). Empaquetado local verificado montaje FUSE, instalación DEB/RPM y arranque de la app en VMs QEMU (Debian 13/Fedora 44) — ver evidencia. Instaladores Windows NSIS/MSI compilan y pasan tests de fuente pero **no tienen QA nativo Windows ni firma**. No afirmar validación nativa Windows.
 
 ## Código y validación
 
-- CI workflow: [.github/workflows/validation.yml](.github/workflows/validation.yml) — Node 24, manifiestos Cargo separados para Linux (`src-tauri`) y Windows (`backend-windows`).
+- CI workflow (fuente): [.github/workflows/validation.yml](.github/workflows/validation.yml) — Node 24, manifiestos Cargo separados para Linux (`src-tauri`) y Windows (`backend-windows`).
 - Comprobaciones de fuente: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Límites de arquitectura: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Empaquetado Linux: `npm run dist:linux` (Docker, no parte de validación estática)
+- Empaquetado Linux (local): `npm run dist:linux` (Docker, no parte de validación CI de fuente)
 - Instrucciones build Windows: [WINDOWS-BUILD.md](WINDOWS-BUILD.md)
 - Procedimiento reversión: [docs/ROLLBACK.md](docs/ROLLBACK.md)
 
@@ -77,7 +81,7 @@ Empaquetar es separado de la validación de fuente y no autoriza ejecutar ni dis
 | Simulación empaquetado | ✅ (sintética) | — |
 | Simulación release | ✅ (sintética) | — |
 
-**Última ejecución CI:** [44950533288](https://github.com/perjesus111-hub/xjaus/actions/runs/44950533288) — los 4 jobs PASAN.
+**Última ejecución CI:** [45055705437](https://github.com/perjesus111-hub/xjaus/actions/runs/45055705437) — los 4 jobs PASAN.
 
 ## Soporte y contribución
 

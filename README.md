@@ -25,13 +25,17 @@ XJAUS is an independent desktop client for Xbox Cloud Gaming and Xbox Remote Pla
 
 ## Releases and downloads
 
-### Latest published release: v1.2.3 (unreleased preparation)
+### Latest published release: v1.2.3
 
-- Linux AppImage: `XJAUS-1.2.3-x86_64.AppImage` (static type-2 runtime, no `libfuse2` required for mount)
-- Linux RPM: `XJAUS-1.2.3-linux-x86_64.rpm`
-- Linux DEB: `XJAUS-1.2.3-linux-amd64.deb`
-- Windows: Not published
-- **Verification:** Linux artifacts rebuilt locally inside the pinned Debian trixie container on 2026-11-14 (SHA-256 in `release/linux/SHA256SUMS`). Unsigned, not approved for release. See [CHANGELOG](CHANGELOG.md#123---historical-unreleased-preparation).
+- **GitHub Release:** [v1.2.3](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.3) (2026-11-15)
+- **Artifacts (Linux x86-64):**
+  - AppImage: [`XJAUS-1.2.3-x86_64.AppImage`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-x86_64.AppImage) (sha256: `45d9e25a3710856ad283b612649ffca67fe4acc1c5b53cfd4f815359a3a3f814`)
+  - RPM: [`XJAUS-1.2.3-linux-x86_64.rpm`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-linux-x86_64.rpm) (sha256: `1c7332f11feca9697565870e01647d495ed3a350139a625b4ed83f1124bfe777`)
+  - DEB: [`XJAUS-1.2.3-linux-amd64.deb`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-linux-amd64.deb) (sha256: `9fd72c64e38390973a0541126fd9c4fa9facfe48c352d77c82d3bd34a555bae7`)
+  - AppImage `.zsync`: [`XJAUS-1.2.3-x86_64.AppImage.zsync`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/XJAUS-1.2.3-x86_64.AppImage.zsync) (experimental, unsigned)
+  - Checksums: [`SHA256SUMS`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.3/SHA256SUMS)
+- **Windows:** Not included in this release.
+- **Notes:** Static type-2 AppImage runtime (no `libfuse2` required), system theme support, experimental `.zsync` chain. See release body for full details.
 
 ### v1.2.4 candidate (this PR)
 
@@ -39,7 +43,7 @@ XJAUS is an independent desktop client for Xbox Cloud Gaming and Xbox Remote Pla
 - Linux packaging path: `npm run dist:linux` (Docker, digest-pinned Debian trixie `node:24.22.3-trixie-slim@sha256:af02d57b...`, Rust 1.96.0).
 - Windows packaging: see [WINDOWS-BUILD.md](WINDOWS-BUILD.md). Native Windows QA not performed; no signature.
 
-### v1.2.1 (last published)
+### Historical: v1.2.1
 
 - [GitHub Release v1.2.1](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1)
 - Validation report: `docs/validation-1.2.1.md`
@@ -47,19 +51,19 @@ XJAUS is an independent desktop client for Xbox Cloud Gaming and Xbox Remote Pla
 
 ## Platform matrix
 
-| Platform | Artifacts | Build verified in CI | Native QA | Signed | Notes |
-|----------|-----------|---------------------|-----------|--------|-------|
-| Linux x86-64 | AppImage, RPM, DEB | ✅ Yes (ed1b6b0) | ✅ FUSE mount, RPM/DEB install verified in container | ❌ No | Static type-2 AppImage runtime; sandbox enforced; no `.zsync` |
+| Platform | Artifacts | CI build verified | Local QA (this PR) | Signed | Notes |
+|----------|-----------|-------------------|---------------------|--------|-------|
+| Linux x86-64 | AppImage, RPM, DEB | ✅ Yes (ed1b6b0) | ✅ FUSE direct mount + DEB/RPM install & launch in QEMU VMs (Debian/Fedora) — [evidence](/var/tmp/xjaus-guest.vPJhhj/evidence.txt) | ❌ No | Static type-2 AppImage runtime; sandbox enforced; no `.zsync` |
 | Windows x64 | NSIS EXE, MSI | ✅ Source build & tests | ❌ No (Wine smoke-test only) | ❌ No | Separate Cargo manifest (`backend-windows`); no native installer validation |
 
-**Honest status:** Linux FUSE/DEB/RPM build and verification passed in commit `ed1b6b0` (CI run 44950533288). Windows NSIS/MSI installers compile and pass source tests but have **no native Windows QA and no signature**. Do not claim native Windows validation.
+**Honest status:** Linux FUSE/DEB/RPM build passed CI in commit `ed1b6b0` (CI run 44950533288). Local packaging verified FUSE mount, DEB/RPM install and app launch in QEMU VMs (Debian 13/Fedora 44) — see evidence. Windows NSIS/MSI compile and pass source tests but have **no native Windows QA and no signature**. Do not claim native Windows validation.
 
 ## Source and validation
 
-- CI workflow: [.github/workflows/validation.yml](.github/workflows/validation.yml) — Node 24, separate Cargo manifests for Linux (`src-tauri`) and Windows (`backend-windows`).
+- CI workflow (source): [.github/workflows/validation.yml](.github/workflows/validation.yml) — Node 24, separate Cargo manifests for Linux (`src-tauri`) and Windows (`backend-windows`).
 - Source checks: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Architecture boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Linux packaging: `npm run dist:linux` (Docker, not part of static validation)
+- Linux packaging (local): `npm run dist:linux` (Docker, not part of CI source validation)
 - Windows build instructions: [WINDOWS-BUILD.md](WINDOWS-BUILD.md)
 - Rollback procedure: [docs/ROLLBACK.md](docs/ROLLBACK.md)
 
@@ -77,7 +81,7 @@ Packaging is separate from source validation and does not authorize running or d
 | Packaging simulation | ✅ (synthetic) | — |
 | Release simulation | ✅ (synthetic) | — |
 
-**Latest CI run:** [44950533288](https://github.com/perjesus111-hub/xjaus/actions/runs/44950533288) — all 4 jobs PASS.
+**Latest CI run:** [45055705437](https://github.com/perjesus111-hub/xjaus/actions/runs/45055705437) — all 4 jobs PASS.
 
 ## Support and contribution
 
