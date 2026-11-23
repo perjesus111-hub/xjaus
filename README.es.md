@@ -17,7 +17,7 @@ Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. E
 
 ## Estado 1.2.4
 
-- **Estado:** Preparación de fuente para v1.2.4 (PR #12, rama `private/xjaus-1.2.4`, commit `ed1b6b0`). No es una publicación.
+- **Estado:** Publicada v1.2.4 (2026-11-23). Paquetes Linux publicados; instaladores Windows configurados pero no validados nativamente.
 - **Destinos:** Linux x86-64 (AppImage, RPM, DEB) y Windows x64 (EXE NSIS, MSI). Los destinos configurados no son garantías de plataforma probada.
 - **Autenticación:** Solo en memoria; reiniciar requiere inicio de sesión interactivo. Cerrar sesión invalida la autenticación local e intenta limpieza de credenciales antiguas sin afirmar revocación en servidor. Ver [Privacidad](PRIVACY.md).
 - **Transmisión:** Navegación con mando, favoritos, diagnóstico opcional. Hasta 1440p, 15–45 Mbps y preferencias de códec son peticiones, no resultados medidos. La decodificación de hardware depende de la transmisión negociada, el entorno y el controlador.
@@ -25,7 +25,18 @@ Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. E
 
 ## Publicaciones y descargas
 
-### Última versión publicada: v1.2.3
+### Última versión publicada: v1.2.4
+
+- **GitHub Release:** [v1.2.4](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.4) (2026-11-23)
+- **Artefactos (Linux x86-64):**
+  - AppImage: [`XJAUS-1.2.4-x86_64.AppImage`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.4/XJAUS-1.2.4-x86_64.AppImage) (sha256: `2d4382bd8217a8ec5ccd623659583f539a25ad9b7b39cc39daf7e3742927253b`)
+  - RPM: [`XJAUS-1.2.4-linux-x86_64.rpm`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.4/XJAUS-1.2.4-linux-x86_64.rpm) (sha256: `e55b96141f3ef11d5a621782634aa0d81dc22b94b9f24749c5ec99958cab1a32`)
+  - DEB: [`XJAUS-1.2.4-linux-amd64.deb`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.4/XJAUS-1.2.4-linux-amd64.deb) (sha256: `8a598cdbef5b31f7381cac4c5761193358a3d268d9b40c2591758b3eeefa2c93`)
+  - Sumas de verificación: [`SHA256SUMS`](https://github.com/perjesus111-hub/xjaus/releases/download/v1.2.4/SHA256SUMS) (cubre los tres archivos arriba)
+- **Windows:** Instaladores NSIS EXE y MSI configurados en el build pero **no incluidos en esta release** (sin QA nativa de Windows, sin firma).
+- **Notas:** Runtime AppImage type-2 estático (sin requerir `libfuse2`), tema del sistema, sin `.zsync` para distribución. Ver cuerpo de la release para detalles.
+
+### Versión previa: v1.2.3
 
 - **GitHub Release:** [v1.2.3](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.3) (2026-11-15)
 - **Artefactos (Linux x86-64):**
@@ -37,12 +48,6 @@ Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. E
 - **Windows:** No incluida en esta release.
 - **Notas:** Runtime AppImage type-2 estático (sin requerir `libfuse2`), tema del sistema, cadena `.zsync` experimental. Ver cuerpo de la release para detalles.
 
-### Candidata v1.2.4 (este PR)
-
-- No hay artefactos de descarga publicados. Este PR prepara solo la fuente.
-- Empaquetado Linux: `npm run dist:linux` (Docker, Debian trixie fijado `node:24.22.3-trixie-slim@sha256:af02d57b...`, Rust 1.96.0).
-- Empaquetado Windows: ver [WINDOWS-BUILD.md](WINDOWS-BUILD.md). QA nativo Windows no realizado; sin firma.
-
 ### Histórica: v1.2.1
 
 - [GitHub Release v1.2.1](https://github.com/perjesus111-hub/xjaus/releases/tag/v1.2.1)
@@ -51,12 +56,12 @@ Cliente de escritorio independiente para Xbox Cloud Gaming y Xbox Remote Play. E
 
 ## Matriz de plataformas
 
-| Plataforma | Artefactos | Build verificado en CI | QA local (este PR) | Firmado | Notas |
-|------------|------------|------------------------|---------------------|---------|-------|
-| Linux x86-64 | AppImage, RPM, DEB | ✅ Sí (ed1b6b0) | ✅ Montaje FUSE directo + instalación y arranque DEB/RPM en VMs QEMU (Debian/Fedora) — [evidencia](/var/tmp/xjaus-guest.vPJhhj/evidence.txt) | ❌ No | Runtime AppImage type-2 estático; sandbox obligatorio; sin `.zsync` |
+| Plataforma | Artefactos | Build verificado en CI | QA local | Firmado | Notas |
+|------------|------------|------------------------|----------|---------|-------|
+| Linux x86-64 | AppImage, RPM, DEB | ✅ Sí (c862733) | ✅ Montaje FUSE directo + instalación y arranque DEB/RPM en VMs QEMU (Debian/Fedora) | ❌ No | Runtime AppImage type-2 estático; sandbox obligatorio; sin `.zsync` |
 | Windows x64 | EXE NSIS, MSI | ✅ Build y tests fuente | ❌ No (solo Wine smoke-test) | ❌ No | Manifiesto Cargo separado (`backend-windows`); sin validación de instalador nativo |
 
-**Estado honesto:** Linux FUSE/DEB/RPM build pasó CI en commit `ed1b6b0` (CI run 44950533288). Empaquetado local verificado montaje FUSE, instalación DEB/RPM y arranque de la app en VMs QEMU (Debian 13/Fedora 44) — ver evidencia. Instaladores Windows NSIS/MSI compilan y pasan tests de fuente pero **no tienen QA nativo Windows ni firma**. No afirmar validación nativa Windows.
+**Estado honesto:** Linux FUSE/DEB/RPM build pasó CI en commit `c862733` (CI run 45055705437). Empaquetado local verificado montaje FUSE, instalación DEB/RPM y arranque de la app en VMs QEMU (Debian 13/Fedora 44). Instaladores Windows NSIS/MSI compilan y pasan tests de fuente pero **no tienen QA nativo Windows ni firma**. No afirmar validación nativa Windows.
 
 ## Código y validación
 

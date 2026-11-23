@@ -4,7 +4,7 @@ All notable changes to XJAUS are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 versions follow [Semantic Versioning](https://semver.org/).
 
-## [1.2.4] - Unreleased
+## [1.2.4] - 2026-11-23
 
 ### Changed
 
@@ -20,6 +20,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 ### Validation limits
 
 - This is source preparation. Hosted CI, candidate payloads, native Windows installation, real-account streaming, signing and publication are not established by local static checks.
+
+### Published assets
+
+- Linux x86-64: AppImage, RPM and DEB with `SHA256SUMS`.
+- Windows: NSIS EXE and MSI configured in build but not included (no native Windows QA, no signature).
 
 ## [1.2.3] - Historical unreleased preparation
 
