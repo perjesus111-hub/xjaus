@@ -65,7 +65,7 @@ let cleanupFullscreen: (() => void) | undefined;
 let cleanupHud: (() => void) | undefined;
 let cleanupLoadingControls: (() => void) | undefined;
 let currentProfile: XboxProfile | undefined;
-let connectionAttempt: { id: string; abort: AbortController; tab: Tab; origin: HTMLElement | null } | undefined;
+let connectionAttempt: { id: string; generation: string; abort: AbortController; tab: Tab; origin: HTMLElement | null; admission: Promise<string> } | undefined;
 let connectionGeneration = 0;
 
 type Status = { authenticated: boolean; account: string; storage: string; catalogAccountScope?: string };
@@ -101,8 +101,9 @@ let catalogSearchPending = false;
 let cleanupLoginCode: (() => void) | undefined;
 let loginFlow: ReturnType<typeof createDeviceLoginFlow> | undefined;
 let authInteractionGeneration = 0;
+let logoutPending = false;
 function disposeLoginCode(): void { cleanupLoginCode?.(); cleanupLoginCode = undefined; }
-window.addEventListener('pagehide',()=>{loginFlow?.dispose(); disposeLoginCode();});
+window.addEventListener('pagehide',()=>{authInteractionGeneration++; loginFlow?.dispose(); disposeLoginCode();});
 let activeTab: Tab = "consoles";
 let loadingCatalog = false;
 let starting = false;
@@ -328,7 +329,9 @@ function switchTab(tab: Tab, focusView = true): void {
   catalogNavigation.sync();
   for (const name of ["home", "consoles", "cloud", "settings"] as const) {
     get<HTMLElement>(`panel-${name}`).hidden = name !== tab;
-    document.querySelector<HTMLButtonElement>(`button[data-action="${name}"]`)?.classList.toggle("active", name === tab);
+    const button=document.querySelector<HTMLButtonElement>(`button[data-action="${name}"]`);
+    button?.classList.toggle("active", name === tab);
+    if(button){if(name===tab)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
   }
   syncFeaturedTimer();
   controllerPresence.sync();
@@ -423,7 +426,10 @@ const consolePolling = createConsolePolling(async () => {
   ]);
   return {smart,streaming};
 }, ({smart,streaming}) => {
-  if(smart.status==='rejected' && streaming.status==='rejected')return;
+  if(smart.status==='rejected' && streaming.status==='rejected'){
+    bindText(remoteStatus,()=>t('consoleDiscoveryFailed'));
+    return;
+  }
   homeServers = streaming.status === "fulfilled" ? streaming.value : null;
   const consoles = smart.status === "fulfilled" ? extractConsoles(smart.value) : [];
   const servers = homeServers ? extractConsoles(homeServers) : [];
@@ -618,7 +624,7 @@ async function stopGame(): Promise<void> {
     for (const release of [releaseControls, () => disposeStreamLoading(overlay), releaseHud, releaseFullscreen]) {
       try { release?.(); } catch { /* Continue releasing the remaining owners. */ }
     }
-    const stopping = old ? old.stop() : attempt ? settleRemoteStop(invoke('cancel_connection', {attemptId: attempt.id})) : Promise.resolve();
+    const stopping = old ? old.stop() : attempt ? attempt.admission.then(generation => settleRemoteStop(invoke('cancel_connection', {attemptId: attempt.id, generation})), () => undefined) : Promise.resolve();
     void stopping.catch(() => { /* Cancellation/late 410 never become menu banners. */ });
   } finally {
     video.srcObject = null;
@@ -635,7 +641,12 @@ async function stopGame(): Promise<void> {
 async function startGame(kind: "home" | "cloud", target: string, name: string, artwork?: CloudTitle, console?: ConsoleItem): Promise<void> {
   if (starting || connectionAttempt || session) return;
   connectionGeneration++;
-  const attempt = { id: crypto.randomUUID(), abort: new AbortController(), tab: activeTab, origin: document.activeElement as HTMLElement | null };
+  const id = crypto.randomUUID();
+  const admission = invoke<string>('begin_connection', {attemptId: id}).then(generation => {
+    if (typeof generation !== 'string' || !generation) throw new Error('Missing backend connection generation');
+    return generation;
+  });
+  const attempt = { id, generation: '', abort: new AbortController(), tab: activeTab, origin: document.activeElement as HTMLElement | null, admission };
   connectionAttempt = attempt;
   const active = () => connectionAttempt === attempt && !attempt.abort.signal.aborted;
   const check = () => { if (!active()) throw new DOMException('Connection cancelled', 'AbortError'); };
@@ -649,10 +660,13 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
     cleanupLoadingControls?.();
     cleanupLoadingControls = mountLoadingControls(overlay, () => { if (active() && !overlay.hidden) void stopGame(); }, currentProfile);
     message = get<HTMLElement>("stream-message");
+    if (kind === 'home' && console?.id) bindText(message,()=>t('waking'));
+    attempt.generation = await attempt.admission;
+    check();
     // WNS belongs to this visible attempt, before any WebRTC peer exists.
     if (kind === 'home' && console?.id) {
       bindText(message,()=>t('waking'));
-      try { await invoke('wake_console', {deviceId: console.id, attemptId: attempt.id}); }
+      try { await invoke('wake_console', {deviceId: console.id, attemptId: attempt.id, generation: attempt.generation}); }
       catch { check(); throw new LocalizedError('wakeHelp'); }
       check(); bindText(message,()=>t('preparingConsole'));
     }
@@ -737,6 +751,7 @@ async function startGame(kind: "home" | "cloud", target: string, name: string, a
         });
       },
       attempt.id,
+      attempt.generation,
     );
     session = candidate;
     await candidate.negotiate(kind, target, selectedProfile());
@@ -766,7 +781,10 @@ function renderLoginFlowState(state: DeviceLoginState): void {
   if (state.kind === 'requesting') { bindText(loginFeedback, () => t('requestingCode')); return; }
   if (state.kind === 'authorized') {
     bindText(loginFeedback, () => t('loginAuthorized'));
-    window.setTimeout(() => { if (loginFlow?.state.kind === 'authorized') showAuth(state.status); }, 250);
+    const generation = authInteractionGeneration;
+    window.setTimeout(() => {
+      if (generation === authInteractionGeneration && loginFlow?.state === state) showAuth(state.status);
+    }, 250);
     return;
   }
   if (state.kind === 'code-available' || state.kind === 'waiting') {
@@ -835,22 +853,9 @@ loginFlow = createDeviceLoginFlow({
 }, renderLoginFlowState);
 
 get<HTMLButtonElement>('btn-login').addEventListener('click', () => {
+  if (logoutPending) return;
   authInteractionGeneration++;
   void loginFlow?.start();
-});
-get<HTMLButtonElement>('manual-login').addEventListener('click', async () => {
-  const generation = ++authInteractionGeneration;
-  if (loginFlow && ['requesting', 'code-available', 'waiting', 'error'].includes(loginFlow.state.kind)) {
-    const cancelled = await loginFlow.cancel();
-    if (!cancelled || generation !== authInteractionGeneration) return;
-  }
-  try {
-    const status = await invoke<Status>('load_session');
-    if (generation === authInteractionGeneration) showAuth(status);
-  } catch (error) {
-    if (generation !== authInteractionGeneration) return;
-    loginFeedback.hidden = false; clearLoginFeedback(); loginFeedback.textContent = errorText(error);
-  }
 });
 for (const tab of ["home", "consoles", "cloud", "settings"] as const) {
   document.querySelector<HTMLButtonElement>(`button[data-action="${tab}"]`)?.addEventListener("click", () => {
@@ -887,14 +892,47 @@ const profilePanel = profileSlot
         }
         return profile;
       },
-      onLogout: async () => {
-        try {
-          await invoke<unknown>("logout");
-          showAuth({ authenticated: false, account: "", storage: "" });
-        } catch (error) { notice(() => t('signOutFailed',{error:errorText(error)})); }
-      },
+      onLogout: logout,
     })
   : undefined;
+async function logout(): Promise<void> {
+  if (logoutPending) return;
+  logoutPending = true;
+  const generation = ++authInteractionGeneration;
+  const confirm = (status: Status) => {
+    loginFlow?.resetAfterLogout();
+    showAuth(status);
+  };
+  try {
+    try {
+      await invoke<unknown>('logout');
+    } catch (error) {
+      if (generation !== authInteractionGeneration) return;
+      // A cleanup error may follow in-memory invalidation, but a transport
+      // error proves neither state. Make one bounded read, never retry logout.
+      let timer: number | undefined;
+      let status: Status | undefined;
+      try {
+        status = await Promise.race([
+          invoke<Status>('auth_status'),
+          new Promise<undefined>(resolve => { timer = window.setTimeout(resolve, 5_000); }),
+        ]);
+      } catch { /* Unknown state. */ }
+      finally { window.clearTimeout(timer); }
+      if (generation !== authInteractionGeneration) return;
+      if (status?.authenticated === false) {
+        confirm(status);
+        notice(() => t('signOutCleanupWarning'));
+      } else {
+        notice(() => t('signOutFailed',{error:errorText(error)}));
+      }
+      return;
+    }
+    if (generation === authInteractionGeneration) confirm({ authenticated: false, account: '', storage: '' });
+  } finally {
+    logoutPending = false;
+  }
+}
 async function refreshProfile(): Promise<void> {
   if (!profilePanel || !settingsProfileVisible()) return;
   await profilePanel.refresh();
@@ -991,7 +1029,12 @@ void settingsReady.then(() => invoke<Status>("auth_status")).then(status => {
 
 function updateStreamLabels() {
  syncRangeFill(get<HTMLInputElement>('stream-bitrate'));
- bindText(get('stream-bitrate-value'),()=>t('bitrateValue',{value:Number(get<HTMLInputElement>('stream-bitrate').value)/1000}));
+ bindText(get('stream-bitrate-value'),()=>{
+  const input=get<HTMLInputElement>('stream-bitrate');
+  const value=t('bitrateValue',{value:Number(input.value)/1000});
+  input.setAttribute('aria-valuetext',value);
+  return value;
+ });
  bindText(get('stream-gain-value'),()=>t('gainValue',{value:Number(get<HTMLInputElement>('stream-audioGain').value)}));
 }
 get('stream-bitrate').addEventListener('input',updateStreamLabels);

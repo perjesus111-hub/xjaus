@@ -1,9 +1,6 @@
 // Read-only local evidence probe. Never serialize TokenBundle or credential values.
-#[path = "../src/auth.rs"]
-mod auth;
-#[path = "../src/vault.rs"]
-mod vault;
 use serde_json::{Value, json};
+use xjaus_backend_lib::vault;
 fn keys(v: &Value) -> Vec<String> {
     v.as_object()
         .map(|m| m.keys().cloned().collect())

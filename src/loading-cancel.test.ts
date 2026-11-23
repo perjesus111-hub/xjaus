@@ -3,12 +3,43 @@ import { it, expect, vi } from 'vitest';
 const { invoke } = vi.hoisted(() => ({invoke: vi.fn()}));
 vi.mock('./backend', () => ({invokeBackend: invoke}));
 import { XboxSessionCoordinator, XboxWebRtcController, requestVideoKeyframe } from './webrtc';
+it('assigns one nonempty owner to every request even without an explicit attempt', async () => {
+ invoke.mockReset();
+ invoke.mockImplementation(async (cmd: string) => cmd === 'provision_stream' ? { state: 'Provisioned' } : undefined);
+ const controller:any = { peer: {}, close: vi.fn(), createOffer: async () => { throw new Error('fixture end'); } };
+ const session = new XboxSessionCoordinator(controller, undefined, undefined, undefined, 'backend-generation');
+ await session.negotiate('home', 'fixture').catch(() => {});
+ await session.stop();
+ const requests = invoke.mock.calls.filter(([cmd]) => ['start_stream', 'provision_stream', 'stop_stream', 'cancel_connection'].includes(cmd));
+ const owner = requests[0][1]?.attemptId;
+ const generation = requests[0][1]?.generation;
+ expect(typeof owner).toBe('string'); expect(owner).not.toBe('');
+ expect(typeof generation).toBe('string'); expect(generation).not.toBe('');
+ for (const [, args] of requests) { expect(args?.attemptId).toBe(owner); expect(args?.generation).toBe(generation); }
+ expect(requests[requests.length - 1]?.[0]).toBe('cancel_connection');
+});
+it('keeps the same owner through expired-token cleanup and retry', async () => {
+ invoke.mockReset(); let provisions = 0;
+ invoke.mockImplementation(async (cmd: string) => {
+  if (cmd === 'provision_stream' && ++provisions === 1) throw new Error('UserNeedsToSignInAgainWithMSA Expired');
+  if (cmd === 'provision_stream') return {state: 'Provisioned'};
+ });
+ const controller:any = {peer: {}, close: vi.fn(), createOffer: async () => { throw new Error('fixture end'); }};
+ const session = new XboxSessionCoordinator(controller, undefined, undefined, 'retry-owner', 'backend-generation');
+ await session.negotiate('home', 'fixture').catch(() => {});
+ await session.stop();
+ const owned = invoke.mock.calls.filter(([cmd]) => ['start_stream','provision_stream','stop_stream','cancel_connection'].includes(cmd));
+ expect(owned.map(([cmd]) => cmd)).toEqual(['start_stream','provision_stream','stop_stream','start_stream','provision_stream','cancel_connection']);
+ const generation = owned[0][1].generation;
+ expect(generation).toEqual(expect.any(String));
+ for (const [,args] of owned) { expect(args.attemptId).toBe('retry-owner'); expect(args.generation).toBe(generation); }
+});
 it('bounds remote cleanup to 2s, keeps the attempt identity and absorbs late rejection',async()=>{
  vi.useFakeTimers();invoke.mockReset();let reject!:(error:unknown)=>void;
  invoke.mockImplementation(()=>new Promise((_,r)=>{reject=r;}));
- const controller:any={peer:{},close:vi.fn()};const session=new XboxSessionCoordinator(controller,vi.fn(),undefined,'old-attempt');
+ const controller:any={peer:{},close:vi.fn()};const session=new XboxSessionCoordinator(controller,vi.fn(),undefined,'old-attempt','backend-generation');
  let done=false;const stopping=session.stop().then(()=>{done=true;});
- expect(controller.close).toHaveBeenCalledOnce();expect(invoke).toHaveBeenCalledWith('cancel_connection',{attemptId:'old-attempt'});
+ expect(controller.close).toHaveBeenCalledOnce();expect(invoke).toHaveBeenCalledWith('cancel_connection',{attemptId:'old-attempt',generation:expect.any(String)});
  await vi.advanceTimersByTimeAsync(1999);expect(done).toBe(false);
  await vi.advanceTimersByTimeAsync(1);expect(done).toBe(true);await stopping;
  reject(new Error('late cleanup'));await Promise.resolve();expect(vi.getTimerCount()).toBe(0);vi.useRealTimers();
@@ -19,9 +50,9 @@ it('cancel during provisioning closes immediately and delayed completion cannot 
  invoke.mockImplementation(async (cmd: string) => cmd === 'provision_stream' ? pending : undefined);
  const controller: any = {peer: {}, close: vi.fn(), createOffer: vi.fn(async()=>({sdp:'offer'}))};
  const progress=vi.fn(), errors=vi.fn();
- const session = new XboxSessionCoordinator(controller, errors, progress);
+ const session = new XboxSessionCoordinator(controller, errors, progress, undefined, 'backend-generation');
  const negotiation=session.negotiate('home','fixture').catch(()=>{});
- await vi.waitFor(()=>expect(invoke).toHaveBeenCalledWith('provision_stream'));
+ await vi.waitFor(()=>expect(invoke).toHaveBeenCalledWith('provision_stream', {attemptId: expect.any(String), generation: expect.any(String)}));
  await session.stop();
  release({state:'Provisioned'}); await negotiation;
  expect(controller.close).toHaveBeenCalledTimes(1);
@@ -45,7 +76,7 @@ it.each(['poll_stream_answer','exchange_stream_ice'])('late %s cannot touch the 
  const controller:any={peer,close:vi.fn(),createOffer:async()=>{
   peer.onicecandidate({candidate:{toJSON:()=>({candidate:'fixture'})}});return {sdp:'fixture'};
  }};
- const errors=vi.fn(),session=new XboxSessionCoordinator(controller,errors);
+ const errors=vi.fn(),session=new XboxSessionCoordinator(controller,errors,undefined,undefined,'backend-generation');
  const negotiation=session.negotiate('home','fixture').catch(()=>{});
  await vi.waitFor(()=>expect(invoke.mock.calls.some(([cmd])=>cmd===stage)).toBe(true));
  await session.stop();

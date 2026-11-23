@@ -246,7 +246,7 @@ export function createDeviceLoginFlow(
     if (disposed) return false;
     if (state.kind === 'cancelled') return true;
     const attemptId = currentAttemptId;
-    generation++;
+    const attempt = ++generation;
     clearTimer();
     current = undefined;
     emit({ kind: 'cancelled' });
@@ -255,20 +255,33 @@ export function createDeviceLoginFlow(
       await safeCancel(attemptId);
       return true;
     } catch {
-      if (!disposed) emit({ kind: 'error', stage: 'cancel', reason: 'recoverable' });
+      if (!disposed && attempt === generation) emit({ kind: 'error', stage: 'cancel', reason: 'recoverable' });
       return false;
     }
+  };
+
+  const invalidate = (): void => {
+    generation++;
+    clearTimer();
+    current = undefined;
+    currentAttemptId = undefined;
+    expiresAt = 0;
+    intervalMs = minPollIntervalMs;
+  };
+
+  // The confirmed backend logout already cleared auth. No cancel RPC is needed.
+  const resetAfterLogout = (): void => {
+    if (disposed) return;
+    invalidate();
+    emit({ kind: 'idle' });
   };
 
   const dispose = (): void => {
     const attemptId = currentAttemptId;
     disposed = true;
-    generation++;
-    clearTimer();
-    current = undefined;
-    currentAttemptId = undefined;
+    invalidate();
     if (attemptId) void safeCancel(attemptId).catch(() => {});
   };
 
-  return { start, retry, cancel, dispose, get state() { return state; } };
+  return { start, retry, cancel, resetAfterLogout, dispose, get state() { return state; } };
 }

@@ -4,6 +4,23 @@ const assert = require('node:assert/strict');
 const { artifactName, linuxBuilderArgs } = require('./packaging.cjs');
 const { BASE_IMAGE, BUILDER_IMAGE, RUST_VERSION, dockerRunArgs } = require('./linux-builder-container.cjs');
 
+test('Linux payload includes the original project license as a separate resource', () => {
+  assert.ok(require('../package.json').build.linux.extraResources.some(
+    ({from, to}) => from === 'LICENSE' && to === 'LICENSE'));
+});
+
+test('license gate rejects missing, empty and modified payloads for each format', () => {
+  const { verifyPackagedLicense } = require('./linux-verify.cjs');
+  const source = Buffer.from('Original project license\n');
+  for (const ext of ['AppImage', 'rpm', 'deb']) {
+    const verify = result => verifyPackagedLicense('/snapshot/0', ext, source, () => result);
+    assert.doesNotThrow(() => verify({status: 0, stdout: source}));
+    assert.throws(() => verify({status: 2, stdout: source}), /extraction failed/);
+    assert.throws(() => verify({status: 0, stdout: Buffer.alloc(0)}), /LICENSE mismatch/);
+    assert.throws(() => verify({status: 0, stdout: Buffer.from('modified')}), /LICENSE mismatch/);
+  }
+});
+
 test('AppImage has no redundant linux segment, while distro names stay unchanged', () => {
   assert.equal(artifactName('1.2.3', 'AppImage'), 'XJAUS-1.2.3-x86_64.AppImage');
   assert.equal(artifactName('1.2.3', 'rpm'), 'XJAUS-1.2.3-linux-x86_64.rpm');
@@ -198,4 +215,46 @@ test('successful verification writes snapshot checksum', () => {
   fs.writeFileSync(file,'original'); verifyArtifacts([file],gate,snapshot => assert.equal(fs.readFileSync(snapshot,'utf8'),'original'));
   assert.equal(fs.readFileSync(gate,'utf8'), `${crypto.createHash('sha256').update('original').digest('hex')}  app.AppImage\n`);
  } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+for (const ext of ['rpm', 'deb']) {
+ test(`${ext} gate rejects a private desktop entry`, () => {
+  const {verifyDesktopEntry} = require('./linux-verify.cjs');
+  const member = '/usr/share/applications/io.github.xjaus.xjaus.desktop';
+  const listing = (mode) => ext === 'rpm' ? `${member}\t${mode}\troot\troot\n` :
+    `${mode} root/root 253 2026-11-19 14:18 .${member}\n`;
+  const check = mode => verifyDesktopEntry('fixture', ext, () => ({status:0, stdout:listing(mode)}));
+  assert.throws(() => check('-rw-------'), /desktop entry.*0644/);
+  assert.doesNotThrow(() => check('-rw-r--r--'));
+ });
+}
+
+test('DEB gate requires an unconditional libc6 floor', () => {
+ const {verifyDebLibc} = require('./linux-verify.cjs');
+ const check = stdout => verifyDebLibc('fixture', () => ({status:0, stdout}));
+ for (const deps of ['libxss1', 'libc6 (>= 2.38)', 'libc6 (>= 2.39) | libxss1'])
+  assert.throws(() => check(deps), /libc6.*2\.39/);
+ assert.doesNotThrow(() => check('libxss1, libc6 (>= 2.39), libgbm1\n'));
+});
+
+
+test('RPM build declares the required x86-64 GLIBC_2.39 capability', () => {
+ assert.ok(require('../package.json').build.rpm.depends.includes('libc.so.6(GLIBC_2.39)(64bit)'),
+   'missing explicit RPM GLIBC_2.39 dependency');
+});
+
+
+test('snapshot gate rejects the real RPM without the GLIBC_2.39 capability', {skip: !process.env.XJAUS_RPM_CONTROL_DIR}, () => {
+ const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+ const {verifyArtifacts} = require('./linux-verify.cjs');
+ const input = process.env.XJAUS_RPM_CONTROL_DIR;
+ const files = ['AppImage', 'rpm', 'deb'].map(ext => path.join(input, artifactName(require('../package.json').version, ext)));
+ const out = fs.mkdtempSync(path.join(os.tmpdir(), 'xjaus-rpm-control-'));
+ try {
+  const gate = path.join(out, 'SHA256SUMS');
+  fs.writeFileSync(gate, 'obsolete');
+  assert.throws(() => verifyArtifacts(files, gate, undefined, fs.readFileSync('LICENSE')), /RPM Requires must include.*GLIBC_2\.39/);
+  assert.equal(fs.existsSync(gate), false);
+ } finally {fs.rmSync(out, {recursive:true, force:true});}
 });

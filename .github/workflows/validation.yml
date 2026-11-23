@@ -29,6 +29,8 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
+      - name: Check application version metadata
+        run: node --test scripts/verify-version-alignment.cjs
       - run: npm ci
       - name: Full Linux test suite
         if: runner.os == 'Linux'
@@ -65,6 +67,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Check both TLS lockfiles without resolving dependencies
+        run: python3 scripts/check-tls-locks.py
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update

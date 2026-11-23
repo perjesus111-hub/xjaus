@@ -32,6 +32,7 @@ if (require.main === module) {
     run('npm', ['run', 'build']);
     run('npm', ['run', 'electron:build-backend:linux']);
     run(process.execPath, ['-r', path.join(root, 'scripts/secure-appimage-preload.cjs'),
+      '-r', path.join(root, 'scripts/fpm-desktop-mode-preload.cjs'),
       path.join(root, 'node_modules/electron-builder/cli.js'), ...linuxBuilderArgs()]);
     run(process.execPath, [path.join(root, 'scripts/linux-verify.cjs')]);
   }

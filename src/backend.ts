@@ -10,7 +10,17 @@ interface XjausBridge {
 }
 declare global { interface Window { xjaus?: XjausBridge } }
 
+const ownedStreamCommands = new Set([
+  'begin_connection', 'wake_console', 'start_stream', 'provision_stream', 'submit_stream_offer', 'poll_stream_answer',
+  'exchange_stream_ice', 'stream_keepalive', 'stop_stream', 'cancel_connection',
+]);
 export async function invokeBackend<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (ownedStreamCommands.has(command) && (typeof args?.attemptId !== 'string' || !args.attemptId)) {
+    throw new Error('Missing connection attempt identifier');
+  }
+  if (command !== 'begin_connection' && ownedStreamCommands.has(command) && (typeof args?.generation !== 'string' || !args.generation)) {
+    throw new Error('Missing connection generation');
+  }
   if (window.xjaus) return window.xjaus.invoke<T>(command, args);
   return tauriInvoke<T>(command, args);
 }

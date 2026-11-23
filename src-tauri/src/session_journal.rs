@@ -55,16 +55,15 @@ fn private_dir(root: &Path) -> Result<(), String> {
 pub fn lock(root: &Path) -> Result<fs::File, String> {
     private_dir(root)?;
     let path = root.join(".lock");
-    if let Ok(meta) = fs::symlink_metadata(&path) {
-        if !meta.is_file()
+    if let Ok(meta) = fs::symlink_metadata(&path)
+        && (!meta.is_file()
             || meta.uid()
                 != fs::metadata(root)
                     .map_err(|_| "Cannot inspect journal")?
                     .uid()
-            || meta.permissions().mode() & 0o777 != 0o600
-        {
-            return Err("Unsafe journal lock".into());
-        }
+            || meta.permissions().mode() & 0o777 != 0o600)
+    {
+        return Err("Unsafe journal lock".into());
     }
     let file = fs::OpenOptions::new()
         .read(true)
@@ -117,6 +116,7 @@ pub fn save(root: &Path, entry: &Entry) -> Result<(), String> {
     }
     result
 }
+#[cfg(test)]
 pub fn matching(root: &Path, account: &str, host: &str) -> Result<Vec<Entry>, String> {
     private_dir(root)?;
     let uid = fs::metadata(root)

@@ -1,6 +1,5 @@
 import {it,expect} from 'vitest';
 import html from '../index.html?raw';import main from './main.ts?raw';
-// @ts-expect-error Node types intentionally excluded from the renderer tsconfig.
 import {readFileSync} from 'node:fs';
 const css:string=readFileSync(new URL('./styles.css',import.meta.url),'utf8');
 it('home recent UI resolves only a freshly discovered console, never dispatches a cloud launch',()=>{

@@ -1,9 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const commands = new Set([
-  'app_exit', 'auth_status', 'begin_login_window', 'poll_login', 'cancel_login', 'load_session', 'persist_session',
+  'app_exit', 'auth_status', 'begin_login_window', 'poll_login', 'cancel_login',
   'refresh_session', 'logout', 'xbox_profile', 'load_settings', 'save_settings', 'wake_console', 'list_consoles_smartglass', 'list_streaming_servers',
   'list_cloud_titles', 'catalog_products', 'start_stream', 'provision_stream',
-  'submit_stream_offer', 'poll_stream_answer', 'exchange_stream_ice', 'stream_keepalive', 'stop_stream', 'cancel_connection',
+  'submit_stream_offer', 'poll_stream_answer', 'exchange_stream_ice', 'stream_keepalive', 'stop_stream', 'begin_connection', 'cancel_connection',
 ]);
 contextBridge.exposeInMainWorld('xjaus', Object.freeze({
   invoke(command, args) {

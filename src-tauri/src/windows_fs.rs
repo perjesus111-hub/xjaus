@@ -45,11 +45,7 @@ fn current_user_sid() -> Result<String, String> {
         }
         let mut size = 0;
         GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut size);
-        let mut data = vec![
-            0usize;
-            (size as usize + std::mem::size_of::<usize>() - 1)
-                / std::mem::size_of::<usize>()
-        ];
+        let mut data = vec![0usize; (size as usize).div_ceil(std::mem::size_of::<usize>())];
         if GetTokenInformation(token, TokenUser, data.as_mut_ptr().cast(), size, &mut size) == 0 {
             CloseHandle(token);
             return Err(format!("Cannot read Windows identity: {}", GetLastError()));

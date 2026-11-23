@@ -308,6 +308,7 @@ impl SessionMachine {
 
 /// Estados en los que Xbox sigue trabajando: la sesión ya fue aceptada y sólo
 /// hay que seguir sondeando. Cualquier otro estado es terminal para el bucle.
+#[cfg(test)]
 pub fn should_keep_waiting(state: SessionState) -> bool {
     matches!(
         state,
@@ -348,7 +349,7 @@ pub fn queue_details(value: &Value) -> Option<Value> {
             compact.insert(key.clone(), entry.clone());
         }
     }
-    (!compact.is_empty()).then(|| Value::Object(compact))
+    (!compact.is_empty()).then_some(Value::Object(compact))
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -362,6 +363,7 @@ pub struct SessionSnapshot {
 impl SessionSnapshot {
     /// Construye el snapshot desde el cuerpo de `/state`, extrayendo los detalles
     /// de cola si Xbox los reporta.
+    #[cfg(test)]
     pub fn from_poll(kind: SessionKind, session_id: Option<String>, body: &Value) -> Self {
         Self {
             state: SessionState::Idle,
@@ -580,15 +582,14 @@ where
     Fut: std::future::Future<Output = Result<Option<Value>, String>>,
 {
     for attempt in 0..attempts {
-        if let Some(result) = fetch().await? {
-            if let Some(encoded) = result
+        if let Some(result) = fetch().await?
+            && let Some(encoded) = result
                 .get("exchangeResponse")
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
-            {
-                return serde_json::from_str(encoded)
-                    .map_err(|_| "Xbox ICE exchange response is invalid".into());
-            }
+        {
+            return serde_json::from_str(encoded)
+                .map_err(|_| "Xbox ICE exchange response is invalid".into());
         }
         if attempt + 1 < attempts {
             tokio::time::sleep(delay).await;
@@ -621,6 +622,13 @@ pub struct SessionClient {
     journal_lock: Option<std::fs::File>,
 }
 impl SessionClient {
+    tauri_only! {
+        #[cfg(test)]
+        pub(crate) fn fixture_base_url(&mut self, url: String) {
+            self.test_base_url = Some(url);
+        }
+    }
+
     pub fn new(
         client: Client,
         host: String,
@@ -647,16 +655,20 @@ impl SessionClient {
             test_journal_root: None,
         }
     }
-    pub fn session_kind(&self) -> SessionKind {
-        self.kind
+    sidecar_only! {
+        pub fn session_kind(&self) -> SessionKind {
+            self.kind
+        }
     }
     pub fn set_transfer_token(&mut self, token: Option<String>) {
         self.transfer_token = token.map(Zeroizing::new);
     }
-    /// Refresh only the bearer used by in-flight session endpoints. The session
-    /// id/state remains intact; this is safe for a keepalive retry after 401.
-    pub fn set_streaming_token(&mut self, token: String) {
-        self.token = Zeroizing::new(token);
+    sidecar_only! {
+        /// Refresh only the bearer used by in-flight session endpoints. The session
+        /// id/state remains intact; this is safe for a keepalive retry after 401.
+        pub fn set_streaming_token(&mut self, token: String) {
+            self.token = Zeroizing::new(token);
+        }
     }
     pub fn set_account_scope(&mut self, scope: Option<String>) -> Result<(), String> {
         if self.kind == SessionKind::Cloud
@@ -689,22 +701,6 @@ impl SessionClient {
             return Ok(root.clone());
         }
         crate::session_journal::root()
-    }
-    async fn cleanup_journal(&self) -> Result<(), String> {
-        if let Some(account) = &self.account_scope {
-            let root = self.journal_root()?;
-            for entry in crate::session_journal::matching(&root, account, &self.host)? {
-                self.request(
-                    reqwest::Method::DELETE,
-                    format!("/v5/sessions/cloud/{}", entry.session_id),
-                    None,
-                    false,
-                )
-                .await?;
-                crate::session_journal::remove(&root, &entry)?;
-            }
-        }
-        Ok(())
     }
     pub fn snapshot(&self) -> SessionSnapshot {
         SessionSnapshot {
@@ -767,6 +763,9 @@ impl SessionClient {
             .await
             .map_err(|_| "Xbox streaming request failed".to_owned())?;
         let status = response.status();
+        if deleting && status == reqwest::StatusCode::ACCEPTED {
+            return Err("Xbox streaming DELETE HTTP 202: completion unconfirmed".into());
+        }
         if deleting
             && matches!(
                 status,
@@ -790,7 +789,8 @@ impl SessionClient {
         if self.account_scope.is_some() {
             self.journal_lock = Some(crate::session_journal::lock(&self.journal_root()?)?);
         }
-        self.cleanup_journal().await?;
+        // Journal entries belong to earlier attempts, not this /play. Never
+        // delete them implicitly when starting a new session.
         let response = self
             .request(
                 reqwest::Method::POST,
@@ -804,24 +804,26 @@ impl SessionClient {
         self.machine.started(id)?;
         self.home_target = (self.kind == SessionKind::Home).then(|| target.to_owned());
         self.did_connect = false;
-        if let Some(entry) = self.journal_entry() {
-            if let Err(error) = crate::session_journal::save(&self.journal_root()?, &entry) {
-                let _ = self.stop().await;
-                return Err(error);
-            }
+        if let Some(entry) = self.journal_entry()
+            && let Err(error) = crate::session_journal::save(&self.journal_root()?, &entry)
+        {
+            let _ = self.stop().await;
+            return Err(error);
         }
         Ok(self.snapshot())
     }
-    /// Sondea `/state` hasta que Xbox acepte la sesión. Provisioning y
-    /// WaitingForResources mantienen el bucle vivo: el blade de Azure puede
-    /// tardar 20-60 s (o más con cola) en levantarse.
-    pub async fn poll_until_provisioned(
-        &mut self,
-        attempts: u8,
-        delay: Duration,
-    ) -> Result<SessionSnapshot, String> {
-        self.poll_until_provisioned_scoped(attempts, delay, None)
-            .await
+    sidecar_or_test! {
+        /// Sondea `/state` hasta que Xbox acepte la sesión. Provisioning y
+        /// WaitingForResources mantienen el bucle vivo: el blade de Azure puede
+        /// tardar 20-60 s (o más con cola) en levantarse.
+        pub async fn poll_until_provisioned(
+            &mut self,
+            attempts: u8,
+            delay: Duration,
+        ) -> Result<SessionSnapshot, String> {
+            self.poll_until_provisioned_scoped(attempts, delay, None)
+                .await
+        }
     }
     /// F2 policy: the Cloud /play+/connect provisioning carries a wall-clock
     /// budget like Home. Counting attempts cannot bound a single silent await.
@@ -833,21 +835,42 @@ impl SessionClient {
         cancellation: Option<(&crate::connection_cancel::ConnectionCancellation, &str)>,
         budget: Duration,
     ) -> Result<SessionSnapshot, String> {
-        tokio::time::timeout(
-            budget,
-            self.poll_provision_inner(attempts, delay, cancellation),
-        )
-        .await
-        .map_err(|_| {
-            format!(
-                "Xbox session provisioning timed out (state: {:?}, queue: {})",
-                self.machine.state,
-                self.provisioning_queue
-                    .as_ref()
-                    .map(Value::to_string)
-                    .unwrap_or_else(|| "none".into())
+        let mut remaining = attempts;
+        let mut deadline = tokio::time::Instant::now() + budget;
+        loop {
+            let result = tokio::time::timeout_at(
+                deadline,
+                self.poll_provision_inner(&mut remaining, delay, cancellation),
             )
-        })?
+            .await
+            .map_err(|_| {
+                if self.kind == SessionKind::Home {
+                    crate::wake::WAKE_TIMEOUT.to_owned()
+                } else {
+                    format!(
+                        "Xbox session provisioning timed out (state: {:?}, queue: {})",
+                        self.machine.state,
+                        self.provisioning_queue
+                            .as_ref()
+                            .map(Value::to_string)
+                            .unwrap_or_else(|| "none".into())
+                    )
+                }
+            })??;
+            if let Some(snapshot) = result {
+                return Ok(snapshot);
+            }
+            // Once dispatched, /play must finish so its returned handle can be retained.
+            // The provisioning clock excludes this request, not its backoff or cleanup.
+            let target = self.home_target.clone().ok_or(crate::wake::WAKE_TIMEOUT)?;
+            let started = tokio::time::Instant::now();
+            let result = self.start(&target).await;
+            deadline += started.elapsed();
+            result?;
+            if let Some((registry, id)) = cancellation {
+                registry.check(Some(id))?;
+            }
+        }
     }
     pub async fn poll_until_provisioned_scoped(
         &mut self,
@@ -855,32 +878,24 @@ impl SessionClient {
         delay: Duration,
         cancellation: Option<(&crate::connection_cancel::ConnectionCancellation, &str)>,
     ) -> Result<SessionSnapshot, String> {
-        if self.kind == SessionKind::Home {
-            return tokio::time::timeout(
-                Duration::from_secs(45),
-                self.poll_provision_inner(attempts, delay, cancellation),
-            )
+        let budget = if self.kind == SessionKind::Home {
+            Duration::from_secs(45)
+        } else {
+            Self::CLOUD_PROVISION_BUDGET
+        };
+        self.poll_until_provisioned_with_budget(attempts, delay, cancellation, budget)
             .await
-            .map_err(|_| crate::wake::WAKE_TIMEOUT.to_owned())?
-            .map_err(|_| crate::wake::WAKE_TIMEOUT.to_owned());
-        }
-        self.poll_until_provisioned_with_budget(
-            attempts,
-            delay,
-            cancellation,
-            Self::CLOUD_PROVISION_BUDGET,
-        )
-        .await
     }
     async fn poll_provision_inner(
         &mut self,
-        attempts: u8,
+        attempts: &mut u8,
         delay: Duration,
         cancellation: Option<(&crate::connection_cancel::ConnectionCancellation, &str)>,
-    ) -> Result<SessionSnapshot, String> {
+    ) -> Result<Option<SessionSnapshot>, String> {
         let mut last_state = String::new();
-        let mut queue: Option<Value> = None;
-        for _attempt in 0..attempts {
+        let mut queue = self.provisioning_queue.clone();
+        while *attempts > 0 {
+            *attempts -= 1;
             let request = self.request(reqwest::Method::GET, self.path("state")?, None, false);
             let response = if let Some((registry, id)) = cancellation {
                 registry.run(Some(id), request).await
@@ -915,21 +930,19 @@ impl SessionClient {
                 self.did_connect = true;
             }
             if next == SessionState::Provisioned {
-                return Ok(SessionSnapshot {
+                return Ok(Some(SessionSnapshot {
                     state: self.machine.state,
                     session_id: self.machine.session_id.clone(),
                     kind: self.kind,
                     provisioning: queue,
-                });
+                }));
             }
             if matches!(next, SessionState::Failed | SessionState::Stopped) {
                 if home_wake_retry(self.kind, &value) {
-                    let target = self.home_target.clone().ok_or(crate::wake::WAKE_TIMEOUT)?;
+                    self.home_target.as_ref().ok_or(crate::wake::WAKE_TIMEOUT)?;
                     // Delete only this client's exact session. Never enumerate/delete
                     // another app's sessions, and never turn off/close a console game.
-                    self.stop()
-                        .await
-                        .map_err(|_| crate::wake::WAKE_TIMEOUT.to_owned())?;
+                    self.stop().await?;
                     self.machine = SessionMachine::default();
                     if let Some((registry, id)) = cancellation {
                         registry
@@ -941,14 +954,7 @@ impl SessionClient {
                     } else {
                         tokio::time::sleep(Duration::from_millis(2500)).await;
                     }
-                    // Do not abort /play in flight: retain its exact id for cleanup.
-                    self.start(&target)
-                        .await
-                        .map_err(|_| crate::wake::WAKE_TIMEOUT.to_owned())?;
-                    if let Some((registry, id)) = cancellation {
-                        registry.check(Some(id))?;
-                    }
-                    continue;
+                    return Ok(None);
                 }
                 if self.kind == SessionKind::Home {
                     return Err("No se pudo iniciar Remote Play. Comprueba las funciones remotas de la consola e inténtalo de nuevo.".into());
@@ -980,17 +986,23 @@ impl SessionClient {
         ))
     }
     pub async fn submit_offer(&mut self, sdp: &str) -> Result<(), String> {
+        let previous_state = self.machine.state;
         self.machine.begin_negotiation()?;
         let payload = json!({"messageType":"offer","sdp":sdp,"configuration": {
             "chatConfiguration":{"bytesPerSample":2,"expectedClipDurationMs":20,"format":{"codec":"opus","container":"webm"},"numChannels":1,"sampleFrequencyHz":24000},
             "chat":{"minVersion":1,"maxVersion":1},"control":{"minVersion":1,"maxVersion":3},"input":{"minVersion":1,"maxVersion":8},"message":{"minVersion":1,"maxVersion":1}}});
-        self.request(
-            reqwest::Method::POST,
-            self.path("sdp")?,
-            Some(payload),
-            false,
-        )
-        .await?;
+        let result = self
+            .request(
+                reqwest::Method::POST,
+                self.path("sdp")?,
+                Some(payload),
+                false,
+            )
+            .await;
+        if result.is_err() {
+            self.machine.state = previous_state;
+        }
+        result?;
         Ok(())
     }
     pub async fn poll_answer(&self, attempts: u8, delay: Duration) -> Result<Value, String> {
@@ -998,10 +1010,9 @@ impl SessionClient {
             if let Some(result) = self
                 .request(reqwest::Method::GET, self.path("sdp")?, None, false)
                 .await?
+                && let Some(answer) = decode_sdp_answer(&result)?
             {
-                if let Some(answer) = decode_sdp_answer(&result)? {
-                    return Ok(answer);
-                }
+                return Ok(answer);
             }
             tokio::time::sleep(delay).await;
         }
@@ -1080,6 +1091,88 @@ pub async fn stop_previous(slot: &mut Option<SessionClient>) -> Result<(), Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn starting_cloud_does_not_delete_other_journaled_handles() {
+        use std::io::{Read, Write};
+        tauri::async_runtime::block_on(async {
+            let root =
+                std::env::temp_dir().join(format!("xjaus-preserve-journal-{}", std::process::id()));
+            let entry = crate::session_journal::Entry {
+                version: 1,
+                app: "xjaus".into(),
+                account: "a".repeat(64),
+                host: "wus.gssv-play-prod.xboxlive.com".into(),
+                session_id: "other-owned".into(),
+                kind: "cloud".into(),
+            };
+            crate::session_journal::save(&root, &entry).unwrap();
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let started = std::time::Instant::now();
+                let mut paths = Vec::new();
+                while started.elapsed() < Duration::from_secs(2) {
+                    match listener.accept() {
+                        Ok((mut socket, _)) => {
+                            // Winsock can inherit the listener's nonblocking mode.
+                            // Keep accept polled, but bound blocking I/O on the peer.
+                            let budget = Duration::from_secs(2);
+                            let remaining = budget
+                                .saturating_sub(started.elapsed())
+                                .max(Duration::from_millis(1));
+                            socket.set_nonblocking(false).unwrap();
+                            socket.set_read_timeout(Some(remaining)).unwrap();
+                            socket.set_write_timeout(Some(remaining)).unwrap();
+                            let mut buf = [0; 8192];
+                            let n = socket.read(&mut buf).unwrap();
+                            let line = String::from_utf8_lossy(&buf[..n])
+                                .lines()
+                                .next()
+                                .unwrap()
+                                .to_owned();
+                            let body = if line.starts_with("POST ") {
+                                r#"{"sessionId":"new-owned"}"#
+                            } else {
+                                "{}"
+                            };
+                            write!(socket,"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",body.len(),body).unwrap();
+                            paths.push(line);
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(5))
+                        }
+                        Err(e) => panic!("{e}"),
+                    }
+                }
+                paths
+            });
+            let mut stream = SessionClient::new(
+                Client::new(),
+                entry.host.clone(),
+                "fixture".into(),
+                SessionKind::Cloud,
+                DeviceProfile::default(),
+            );
+            stream.test_base_url = Some(base);
+            stream.test_journal_root = Some(root.clone());
+            stream
+                .set_account_scope(Some(entry.account.clone()))
+                .unwrap();
+            stream.start("fixture").await.unwrap();
+            let paths = server.join().unwrap();
+            assert_eq!(paths, vec!["POST /v5/sessions/cloud/play HTTP/1.1"]);
+            assert!(
+                crate::session_journal::matching(&root, &entry.account, &entry.host)
+                    .unwrap()
+                    .iter()
+                    .any(|e| e.session_id == "other-owned")
+            );
+            drop(stream);
+            std::fs::remove_dir_all(root).unwrap();
+        });
+    }
+
     #[test]
     fn silent_server_request_fails_within_client_deadline() {
         // F2 regression: a server that accepts TCP and never answers must not
@@ -1221,6 +1314,57 @@ mod tests {
         );
     }
     #[test]
+    fn home_budget_does_not_drop_retry_play_in_flight() {
+        tauri::async_runtime::block_on(async {
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                for (index, body) in [
+                    r#"{"state":"Failed","errorDetails":{"code":"WNSError"}}"#,
+                    "",
+                    r#"{"sessionId":"retry-owned"}"#,
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    let mut buf = [0; 8192];
+                    assert!(socket.read(&mut buf).unwrap() > 0);
+                    if index == 2 {
+                        std::thread::sleep(Duration::from_millis(500));
+                    }
+                    let _ = write!(
+                        socket,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                }
+            });
+            let mut client = SessionClient::new(
+                Client::new(),
+                "fixture.invalid".into(),
+                "fixture".into(),
+                SessionKind::Home,
+                DeviceProfile::default(),
+            );
+            client.test_base_url = Some(base);
+            client.machine.started("owned".into()).unwrap();
+            client.home_target = Some("console".into());
+            let _ = client
+                .poll_until_provisioned_with_budget(
+                    3,
+                    Duration::ZERO,
+                    None,
+                    Duration::from_millis(2700),
+                )
+                .await;
+            assert_eq!(client.machine.session_id.as_deref(), Some("retry-owned"));
+            server.join().unwrap();
+        });
+    }
+    #[test]
     fn home_wns_http_retry_deletes_only_own_handle_then_replays_same_target() {
         tauri::async_runtime::block_on(async {
             use std::io::{Read, Write};
@@ -1288,6 +1432,84 @@ mod tests {
         });
     }
     #[test]
+    fn home_wake_restart_propagates_http_error() {
+        tauri::async_runtime::block_on(async {
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                for (status, body) in [
+                    (
+                        "200 OK",
+                        r#"{"state":"Failed","errorDetails":{"code":"WNSError"}}"#,
+                    ),
+                    ("204 No Content", ""),
+                    ("403 Forbidden", r#"{"code":"RestartDenied"}"#),
+                ] {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    let mut buffer = [0; 8192];
+                    assert!(socket.read(&mut buffer).unwrap() > 0);
+                    write!(socket, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                }
+            });
+            let mut client = SessionClient::new(
+                Client::new(),
+                "fixture.invalid".into(),
+                "fixture".into(),
+                SessionKind::Home,
+                DeviceProfile::default(),
+            );
+            client.test_base_url = Some(base);
+            client.machine.started("owned".into()).unwrap();
+            client.home_target = Some("console".into());
+            let error = client
+                .poll_until_provisioned(2, Duration::ZERO)
+                .await
+                .unwrap_err();
+            assert!(error.contains("RestartDenied"), "{error}");
+            server.join().unwrap();
+        });
+    }
+    #[test]
+    fn home_wake_cleanup_propagates_http_error() {
+        tauri::async_runtime::block_on(async {
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                for (status, body) in [
+                    (
+                        "200 OK",
+                        r#"{"state":"Failed","errorDetails":{"code":"WNSError"}}"#,
+                    ),
+                    ("500 Internal Server Error", r#"{"code":"CleanupFailed"}"#),
+                ] {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    let mut buffer = [0; 8192];
+                    assert!(socket.read(&mut buffer).unwrap() > 0);
+                    write!(socket, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                }
+            });
+            let mut client = SessionClient::new(
+                Client::new(),
+                "fixture.invalid".into(),
+                "fixture".into(),
+                SessionKind::Home,
+                DeviceProfile::default(),
+            );
+            client.test_base_url = Some(base);
+            client.machine.started("owned".into()).unwrap();
+            client.home_target = Some("console".into());
+            let error = client
+                .poll_until_provisioned(1, Duration::ZERO)
+                .await
+                .unwrap_err();
+            assert!(error.contains("CleanupFailed"), "{error}");
+            assert_eq!(client.snapshot().session_id.as_deref(), Some("owned"));
+            server.join().unwrap();
+        });
+    }
+    #[test]
     fn home_wake_retry_is_exact_and_never_retries_cloud_or_other_errors() {
         assert!(home_wake_retry(
             SessionKind::Home,
@@ -1303,7 +1525,7 @@ mod tests {
         ));
     }
     #[test]
-    fn restart_cleanup_uses_only_matching_provenance_before_play_and_stop_removes_journal() {
+    fn restart_preserves_old_handles_and_stop_removes_only_new_journal() {
         tauri::async_runtime::block_on(async {
             use std::io::{Read, Write};
             let root =
@@ -1327,7 +1549,7 @@ mod tests {
             let base = format!("http://{}", listener.local_addr().unwrap());
             let server = std::thread::spawn(move || {
                 let mut requests = vec![];
-                for body in ["", r#"{"sessionId":"own-new"}"#, ""] {
+                for body in [r#"{"sessionId":"own-new"}"#, ""] {
                     let (mut socket, _) = listener.accept().unwrap();
                     socket
                         .set_read_timeout(Some(Duration::from_secs(3)))
@@ -1362,16 +1584,16 @@ mod tests {
             client.test_journal_root = Some(root.clone());
             client.set_account_scope(Some(account.clone())).unwrap();
             client.start("test-title").await.unwrap();
-            assert_eq!(
-                crate::session_journal::matching(&root, &account, host).unwrap()[0].session_id,
-                "own-new"
-            );
-            client.stop().await.unwrap();
             assert!(
                 crate::session_journal::matching(&root, &account, host)
                     .unwrap()
-                    .is_empty()
+                    .iter()
+                    .any(|e| e.session_id == "own-new")
             );
+            client.stop().await.unwrap();
+            let remaining = crate::session_journal::matching(&root, &account, host).unwrap();
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(remaining[0].session_id, "own-old");
             assert_eq!(
                 crate::session_journal::matching(&root, &foreign.account, host)
                     .unwrap()
@@ -1381,7 +1603,6 @@ mod tests {
             assert_eq!(
                 server.join().unwrap(),
                 [
-                    "DELETE /v5/sessions/cloud/own-old HTTP/1.1",
                     "POST /v5/sessions/cloud/play HTTP/1.1",
                     "DELETE /v5/sessions/cloud/own-new HTTP/1.1"
                 ]
@@ -1447,11 +1668,18 @@ mod tests {
             assert!(slot.is_none());
             let mut next = SessionClient::new(
                 Client::new(),
-                "fixture.invalid".into(),
+                "wus.gssv-play-prod.xboxlive.com".into(),
                 "fixture".into(),
                 SessionKind::Cloud,
                 DeviceProfile::default(),
             );
+            let root = std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(std::path::PathBuf::from)
+                .unwrap()
+                .join(format!(".xjaus-replacement-test-{}", std::process::id()));
+            next.test_journal_root = Some(root.clone());
+            next.set_account_scope(Some("a".repeat(64))).unwrap();
             next.test_base_url = Some(base);
             next.start("title").await.unwrap();
             assert_eq!(
@@ -1461,6 +1689,8 @@ mod tests {
                     "POST /v5/sessions/cloud/play HTTP/1.1"
                 ]
             );
+            drop(next);
+            std::fs::remove_dir_all(root).unwrap();
         });
     }
     #[test]
@@ -1648,7 +1878,7 @@ mod tests {
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .unwrap();
             let mut buffer = [0; 4096];
-            socket.read(&mut buffer).unwrap();
+            assert!(socket.read(&mut buffer).unwrap() > 0);
             let body = r#"{"state":"WaitingForResources","provisioningDetails":{"queuePosition":3,"estimatedTotalWaitTimeSeconds":42}}"#;
             write!(
                 socket,
@@ -1804,6 +2034,72 @@ mod tests {
             .await
             .unwrap_err();
             assert_eq!(error, "Xbox ICE exchange response is invalid");
+        });
+    }
+    #[test]
+    fn cancelled_sdp_submission_retains_owned_session_in_negotiation() {
+        tauri::async_runtime::block_on(async {
+            use std::io::Read;
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut buf = [0; 8192];
+                assert!(socket.read(&mut buf).unwrap() > 0);
+                std::thread::sleep(Duration::from_millis(250));
+            });
+            let mut client = SessionClient::new(
+                Client::new(),
+                "fixture.invalid".into(),
+                "fixture".into(),
+                SessionKind::Home,
+                DeviceProfile::default(),
+            );
+            client.test_base_url = Some(base);
+            client.machine.started("owned".into()).unwrap();
+            client.machine.observe_server_state("Provisioned").unwrap();
+            assert!(
+                tokio::time::timeout(Duration::from_millis(100), client.submit_offer("v=0"))
+                    .await
+                    .is_err()
+            );
+            assert_eq!(client.machine.state, SessionState::Negotiating);
+            assert_eq!(client.snapshot().session_id.as_deref(), Some("owned"));
+            server.join().unwrap();
+        });
+    }
+    #[test]
+    fn failed_sdp_submission_restores_state_for_retry() {
+        tauri::async_runtime::block_on(async {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                for status in ["500 Internal Server Error", "200 OK"] {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    let mut buf = [0; 8192];
+                    let _ = socket.read(&mut buf).unwrap();
+                    write!(
+                        socket,
+                        "HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .unwrap();
+                }
+            });
+            let mut client = SessionClient::new(
+                Client::new(),
+                "fixture.invalid".into(),
+                "fixture".into(),
+                SessionKind::Home,
+                DeviceProfile::default(),
+            );
+            client.test_base_url = Some(base);
+            client.machine.started("fixture".into()).unwrap();
+            client.machine.observe_server_state("Provisioned").unwrap();
+            assert!(client.submit_offer("v=0").await.is_err());
+            assert_eq!(client.machine.state, SessionState::Provisioned);
+            client.submit_offer("v=0").await.unwrap();
+            server.join().unwrap();
         });
     }
     #[test]
@@ -1987,8 +2283,10 @@ mod tests {
 
     #[test]
     fn cloud_payload_selects_title_not_server() {
-        let mut profile = DeviceProfile::default();
-        profile.locale = "en-US".into();
+        let profile = DeviceProfile {
+            locale: "en-US".into(),
+            ..DeviceProfile::default()
+        };
         let payload = profile.play_payload(SessionKind::Cloud, "title-123");
         assert_eq!(
             payload.pointer("/titleId").and_then(Value::as_str),

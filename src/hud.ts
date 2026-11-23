@@ -132,6 +132,7 @@ export function createPlayerHudController(options: HudOptions): PlayerHudControl
   const scheduleRehide = () => {
     if(disabled || disposed)return;
     clearTimers();
+    if (hud.contains?.(win.document.activeElement as Node | null)) return;
     cursorTimer = win.setTimeout(() => {
       cursorTimer = undefined;
       setState(true);
@@ -146,7 +147,7 @@ export function createPlayerHudController(options: HudOptions): PlayerHudControl
     scheduleRehide();
   };
   video.addEventListener("playing", onPlaying);
-  const onFocus = () => { setState(false); scheduleRehide(); };
+  const onFocus = () => { clearTimers(); setState(false); };
   const onFocusOut = () => { if(!hidden) scheduleRehide(); };
   hud.addEventListener?.('focusin',onFocus);
   hud.addEventListener?.('focusout',onFocusOut);

@@ -124,7 +124,7 @@ describe("clean session teardown", () => {
     const peer = { close: () => { stopCalls.push("peer.close"); }, onicecandidate: null } as unknown as RTCDataChannel;
     const controller = { peer, gamepad: {}, createOffer: async () => ({ sdp: "offer" }), attachVideoElement() {}, close() { peer.close(); }, options: undefined } as any;
     const seen: unknown[] = [];
-    const coordinator = new XboxSessionCoordinator(controller, (error: unknown) => seen.push(error));
+    const coordinator = new XboxSessionCoordinator(controller, (error: unknown) => seen.push(error), undefined, undefined, 'backend-generation');
     const late = Promise.reject(new Error("Xbox streaming keepalive HTTP 410: SessionNotActive"));
     await coordinator["absorbLateFailures"](late);
     expect(seen).toEqual([]);
@@ -154,7 +154,7 @@ describe("clean session teardown", () => {
       createOffer: async () => ({ sdp: "fixture-offer" }), close: () => {},
       peer: { setRemoteDescription: async () => {}, addIceCandidate: async () => {}, onicecandidate: null },
     } as any;
-    const coordinator = new XboxSessionCoordinator(controller, () => {});
+    const coordinator = new XboxSessionCoordinator(controller, () => {}, undefined, undefined, 'backend-generation');
     await coordinator.negotiate("home", "fixture");
     const tick = (coordinator as any)["tickKeepalive"].bind(coordinator);
     tick();

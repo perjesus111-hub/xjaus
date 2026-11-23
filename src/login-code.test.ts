@@ -20,8 +20,4 @@ it('copies the real pairing code using an accessible button and localized tempor
  i18n.setPreference('en');expect(status.textContent).toBe('Copied!');
  i18n.setPreference('es');expect(status.textContent).toBe('¡Copiado!');
  await vi.advanceTimersByTimeAsync(1800);expect(status.textContent).toBe('');
- f.invoke.mockRejectedValueOnce(new Error('No saved session'));
- document.querySelector<HTMLButtonElement>('#manual-login')!.click();await vi.advanceTimersByTimeAsync(0);
- button!.click();await vi.advanceTimersByTimeAsync(0);
- expect(f.write).toHaveBeenCalledTimes(1);
 });

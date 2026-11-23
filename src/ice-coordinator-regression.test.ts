@@ -15,14 +15,14 @@ function setup(sdp:string) {
   const controller:any={channels:{control},sendControl:vi.fn(),createOffer:async()=>({sdp:'fixture-offer'}),
     close:vi.fn(),peer:{setRemoteDescription:async()=>{},addIceCandidate:vi.fn()}};
   vi.stubGlobal('window',globalThis);
-  const coordinator=new XboxSessionCoordinator(controller);
+  const coordinator=new XboxSessionCoordinator(controller,undefined,undefined,undefined,'backend-generation');
   return {controller,control,coordinator,release};
 }
 it('arms keyframe on control open before the pending ICE GET completes',async()=>{
   const {controller,control,coordinator,release}=setup('v=0\r\n');
   controller.createOffer=async()=>{controller.peer.onicecandidate({candidate:{toJSON:()=>({candidate:'fixture'})}});return {sdp:'fixture-offer'}};
   const negotiation=coordinator.negotiate('cloud','fixture-title');
-  await vi.waitFor(()=>expect(invoke).toHaveBeenCalledWith('poll_stream_answer'));
+  await vi.waitFor(()=>expect(invoke).toHaveBeenCalledWith('poll_stream_answer', {attemptId: expect.any(String), generation: expect.any(String)}));
   await new Promise(r=>setTimeout(r,0));
   control.readyState='open';control.dispatchEvent(new Event('open'));
   try {expect(controller.sendControl).toHaveBeenCalledWith(JSON.stringify(KEYFRAME_REQUEST));}

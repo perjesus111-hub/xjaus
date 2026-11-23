@@ -3,7 +3,6 @@ i18n.setPreference('es');
 // @vitest-environment happy-dom
 import { it, expect, vi, afterEach } from 'vitest';
 import { mountLoadingControls } from './loading-controls';
-// @ts-expect-error Node types are not part of the browser build; Vitest runs in Node.
 import { readFileSync } from 'node:fs';
 const css: string = readFileSync('src/styles.css', 'utf8');
 afterEach(()=>vi.unstubAllGlobals());

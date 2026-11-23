@@ -77,6 +77,7 @@ pub fn save(root: &Path, entry: &Entry) -> Result<(), String> {
         &serde_json::to_vec(entry).map_err(|_| "Cannot encode journal")?,
     )
 }
+#[cfg(test)]
 pub fn matching(root: &Path, account: &str, host: &str) -> Result<Vec<Entry>, String> {
     private_dir(root)?;
     let mut result = vec![];

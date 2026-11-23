@@ -1,5 +1,4 @@
 import { expect, it } from 'vitest';
-// @ts-expect-error Node types intentionally excluded from renderer tsconfig.
 import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');

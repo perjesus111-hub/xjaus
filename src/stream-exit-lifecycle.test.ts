@@ -17,6 +17,7 @@ it('intentional exit navigates and exits app before backend stop; closed remotel
   if(cmd==='load_settings')return {resolution:'1920x1080',bitrate:30000,codec:'auto',audio:'opus'};
   if(cmd==='list_consoles_smartglass')return [{id:'a',serverId:'a',name:'First'},{id:'b',serverId:'b',name:'Second'}];
   if(cmd==='list_streaming_servers')return [{serverId:'a',name:'First'},{serverId:'b',name:'Second'}];
+  if(cmd==='begin_connection')return 'backend-generation';
   if(cmd==='cancel_connection')return new Promise(r=>pending.push(r));
   return {};
  });
@@ -25,6 +26,12 @@ it('intentional exit navigates and exits app before backend stop; closed remotel
  try{
   await import('./main');await flush();
   const origin=document.querySelectorAll<HTMLButtonElement>('.console-card button')[1];origin.focus();origin.click();await flush();
+  const beginIndex=f.invoke.mock.calls.findIndex(([cmd])=>cmd==='begin_connection');
+  const wakeIndex=f.invoke.mock.calls.findIndex(([cmd])=>cmd==='wake_console');
+  expect(beginIndex).toBeGreaterThanOrEqual(0); expect(wakeIndex).toBeGreaterThan(beginIndex);
+  expect(f.invoke.mock.calls[beginIndex][1].attemptId).toBe(f.invoke.mock.calls[wakeIndex][1].attemptId);
+  expect(f.invoke.mock.calls[beginIndex][1].generation).toBeUndefined();
+  expect(f.invoke.mock.calls[wakeIndex][1].generation).toBe('backend-generation');
   const video=document.querySelector<HTMLVideoElement>('#stream-video')!;video.dispatchEvent(new Event('playing'));await flush();
   const peer=f.controllers[0].peer;peer.connectionState='disconnected';peer.dispatchEvent(new Event('connectionstatechange'));
   expect(document.querySelector<HTMLElement>('.stream-reconnecting')!.hidden).toBe(false);

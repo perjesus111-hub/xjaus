@@ -220,7 +220,7 @@ impl ProfileCache {
         Ok(result?)
     }
     pub fn telemetry(&self) -> ProfileTelemetry {
-        self.telemetry.lock().unwrap().clone()
+        *self.telemetry.lock().unwrap()
     }
 
     /// Devuelve la identidad cacheada si sigue vigente; si expiró (o cambió de
@@ -242,29 +242,27 @@ impl ProfileCache {
             if epoch != self.epoch.load(std::sync::atomic::Ordering::SeqCst) {
                 return Err("Profile request invalidated by logout".into());
             }
-            if let Some((identity, cached_at)) = path.as_ref().and_then(|p| self.read_disk(p)) {
-                if now >= cached_at
-                    && now - cached_at
-                        < self
-                            .policy
-                            .identity_ttl_secs
-                            .min(REVALIDATE_DISPLAY_NAME_SECS)
-                {
-                    *entry = Some((account_scope.to_owned(), identity, cached_at));
-                }
+            if let Some((identity, cached_at)) = path.as_ref().and_then(|p| self.read_disk(p))
+                && now >= cached_at
+                && now - cached_at
+                    < self
+                        .policy
+                        .identity_ttl_secs
+                        .min(REVALIDATE_DISPLAY_NAME_SECS)
+            {
+                *entry = Some((account_scope.to_owned(), identity, cached_at));
             }
-            if let Some((account, identity, cached_at)) = entry.as_ref() {
-                if account == account_scope
-                    && now >= *cached_at
-                    && now.saturating_sub(*cached_at)
-                        < self
-                            .policy
-                            .identity_ttl_secs
-                            .min(REVALIDATE_DISPLAY_NAME_SECS)
-                {
-                    self.telemetry.lock().unwrap().cache_hits += 1;
-                    return Ok(identity.clone());
-                }
+            if let Some((account, identity, cached_at)) = entry.as_ref()
+                && account == account_scope
+                && now >= *cached_at
+                && now.saturating_sub(*cached_at)
+                    < self
+                        .policy
+                        .identity_ttl_secs
+                        .min(REVALIDATE_DISPLAY_NAME_SECS)
+            {
+                self.telemetry.lock().unwrap().cache_hits += 1;
+                return Ok(identity.clone());
             }
         }
         let identity = fetch().await?;
@@ -663,7 +661,7 @@ mod tests {
             url,
             "https://profile.xboxlive.com/users/me/profile/settings?settings=Gamertag,GameDisplayName,Gamerscore,GameDisplayPicRaw"
         );
-        let map: std::collections::HashMap<_, _> = headers.to_vec().into_iter().collect();
+        let map: std::collections::HashMap<_, _> = headers.into_iter().collect();
         assert_eq!(
             map.get("Authorization").map(String::as_str),
             Some("XBL3.0 x=fixture-uhs;fixture-bearer")
@@ -696,23 +694,16 @@ mod tests {
                     .set_read_timeout(Some(Duration::from_secs(3)))
                     .unwrap();
                 let mut data = Vec::new();
-                let mut saw_request_head = false;
+
                 loop {
                     let mut chunk = [0; 4096];
                     match socket.read(&mut chunk) {
                         Ok(0) => break,
                         Ok(n) => data.extend_from_slice(&chunk[..n]),
-                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                            if saw_request_head {
-                                break; // el cliente ya envió todo lo necesario
-                            }
-                            continue;
-                        }
                         Err(error) => panic!("mock server read: {error}"),
                     }
                     let request = String::from_utf8_lossy(&data);
                     if request.contains("\r\n\r\n") {
-                        saw_request_head = true;
                         // El GET no lleva cuerpo: con el head completo basta.
                         break;
                     }

@@ -25,6 +25,7 @@ it('real main/coordinator: Escape cancels WNS, late wake never creates peer; cli
   if(cmd==='xbox_profile')return {gamertag:'Live fixture',gamerscore:'37',gameDisplayPicRaw:'https://images-eds.xboxlive.com/avatar',accountTier:''};
   if(cmd==='list_consoles_smartglass')return [{id:'sg',name:'Fixture Xbox',serverId:'server',powerState:'Standby'}];
   if(cmd==='list_streaming_servers')return [{serverId:'server',name:'Fixture Xbox'}];
+  if(cmd==='begin_connection')return 'backend-generation';
   if(cmd==='wake_console')return wake;
   if(cmd==='list_cloud_titles')return raw;
   if(cmd==='catalog_products')return {Products:[{ProductId:'ABCDEFGHIJKL',LocalizedProperties:[{ProductTitle:'Fixture Game'}]}]};
@@ -37,9 +38,10 @@ it('real main/coordinator: Escape cancels WNS, late wake never creates peer; cli
  document.querySelector<HTMLButtonElement>('.console-card button')!.click();
  expect(document.querySelector<HTMLElement>('#player-screen')!.hidden).toBe(false);
  expect(document.querySelector('#stream-message')!.textContent).toContain('Encendiendo');
+ await vi.waitFor(()=>expect(f.invoke).toHaveBeenCalledWith('wake_console', expect.objectContaining({attemptId:expect.any(String)})));
  window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
  expect(document.querySelector<HTMLElement>('#player-screen')!.hidden).toBe(true);
- expect(f.invoke).toHaveBeenCalledWith('cancel_connection',{attemptId:expect.any(String)});
+ await vi.waitFor(()=>expect(f.invoke).toHaveBeenCalledWith('cancel_connection',{attemptId:expect.any(String), generation:expect.any(String)}));
  wakeReady();await new Promise(r=>setTimeout(r,10));expect(f.peers).toBe(0);
  document.querySelector<HTMLButtonElement>('[data-action=cloud]')!.click();
  await vi.waitFor(()=>expect(document.querySelector('.game-card button')).not.toBeNull());

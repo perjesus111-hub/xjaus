@@ -24,7 +24,6 @@ it('home rotates its four exact tips and clears pending fades on replacement and
  vi.advanceTimersByTime(6500); disposeStreamLoading(overlay); disposeStreamLoading(overlay);
  expect(vi.getTimerCount()).toBe(0);
 });
-// @ts-expect-error Node fs is test-only
 import { readFileSync } from 'node:fs';
 it('home metadata reaches presentation and progress cannot replace home status', () => {
  const main=readFileSync('src/main.ts','utf8');

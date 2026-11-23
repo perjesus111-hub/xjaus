@@ -5,6 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 if (process.platform !== 'linux') throw new Error('Linux sidecar must be built on Linux');
+const tls = spawnSync('python3', ['scripts/check-tls-locks.py'], { cwd: root, stdio: 'inherit' });
+if (tls.error) throw tls.error;
+if (tls.status !== 0) process.exit(tls.status || 1);
 // Rust panic messages embed the absolute build-time path; remap the maintainer's
 // home directory out of every published binary.
 const remapFlags = ['--remap-path-prefix=' + os.homedir() + '=/build'];

@@ -63,6 +63,42 @@ describe('device-code login state machine', () => {
     flow.dispose();
   });
 
+  it('ignores a pending poll and cancel failure from before a confirmed logout', async () => {
+    vi.useFakeTimers();
+    let resolvePoll!: (status: DeviceLoginStatus) => void;
+    let rejectCancel!: (error: Error) => void;
+    const { flow } = makeFlow({
+      poll: () => new Promise(resolve => { resolvePoll = resolve; }),
+      cancel: () => new Promise((_, reject) => { rejectCancel = reject; }),
+    });
+    await flow.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(flow.state.kind).toBe('waiting');
+    const oldCancel = flow.cancel();
+    flow.resetAfterLogout();
+    expect(flow.state.kind).toBe('idle');
+    await flow.start();
+    resolvePoll(authenticated);
+    rejectCancel(new Error('late cancel failure'));
+    expect(await oldCancel).toBe(false);
+    expect(flow.state.kind).toBe('code-available');
+    flow.dispose();
+  });
+
+  it('ignores a begin callback delivered after a confirmed logout', async () => {
+    vi.useFakeTimers();
+    let resolveBegin!: (status: DeviceLoginStart) => void;
+    const { api, flow } = makeFlow({ begin: () => new Promise(resolve => { resolveBegin = resolve; }) });
+    const oldStart = flow.start();
+    flow.resetAfterLogout();
+    resolveBegin(startResponse);
+    await oldStart;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(flow.state.kind).toBe('idle');
+    expect(api.poll).not.toHaveBeenCalled();
+    expect(api.cancel).not.toHaveBeenCalled();
+  });
+
   it('recovers from a slow but finite device-code response', async () => {
     vi.useFakeTimers();
     let resolveStart!: (value: DeviceLoginStart) => void;

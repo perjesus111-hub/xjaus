@@ -348,7 +348,7 @@ select {
   padding: 8px 12px;
   font: inherit;
 }
-select:focus { outline: none; border-color: var(--gold-dim); }
+select:focus { border-color: var(--gold-dim); }
 .chip {
   display: inline-block;
   font: 600 0.72rem system-ui;
@@ -519,7 +519,7 @@ html.cursor-none, html.cursor-none * { cursor: none !important; }
 .player-screen:has(.stream-overlay:not([hidden])) .player-toolbar > * { pointer-events: auto; }
 .player-screen:has(.stream-overlay:not([hidden])) .player-brand { visibility: hidden; }
 @media (max-width: 620px) { .profile-chip { margin-left: auto; max-width: 190px; } .loading-content { bottom: 25%; } }
-@media (prefers-reduced-motion: reduce) { .loading-ring { animation-duration: 3s; } }
+@media (prefers-reduced-motion: reduce) { .loading-ring { animation: none; } }
 .loading-header-actions { position: absolute; top: 36px; right: 36px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; z-index: 3; max-width: calc(100% - 330px); }
 .loading-profile { display: flex; align-items: center; gap: 10px; min-width: 0; color: white; }
 .loading-profile img { border-radius: 50%; object-fit: cover; flex: none; }
